@@ -1,0 +1,32 @@
+[project]
+name = "yolo-vlm-backend"
+version = "0.1.0"
+description = "YOLO + VLM video analysis backend — M0 skeleton (Producer / Consumer / Saver)"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0,<4.0",
+    "flask-sock>=0.7",
+    "redis>=5.0,<6.0",
+    "prometheus-client>=0.20",
+    "pymysql>=1.1",
+    "minio>=7.2",
+    "pyyaml>=6.0",
+    "opencv-python-headless>=4.9",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "fakeredis>=2.23",
+    "ruff>=0.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,15 @@
+# Prometheus scrape config — placeholder. M3 wires the real Grafana stack.
+# This file lives in docker/ so M3 can pick it up unchanged.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: yolo-vlm-backend
+    static_configs:
+      - targets:
+          - producer:9101
+          - consumer:9102
+          - saver:9103
+        labels:
+          milestone: m0

@@ -1,0 +1,75 @@
+# BE-M0-S3: skeleton compose for backend + Redis (with AOF).
+#
+# This file intentionally only declares the three workers + Flask + Redis.
+# Full shared environment (MinIO/MediaMTX/Chroma) is delivered by BE-M0-S5
+# (YU-39) and Compose-merged via `docker compose -f docker-compose.yml -f
+# ../be-m0-s5/docker-compose.yml up -d`.
+
+services:
+  redis:
+    image: redis:7-alpine
+    # AOF on — required for Stream durability (re-deliver across restarts).
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  flask:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${FLASK_PORT:-8000}:8000"
+    command: ["python", "-m", "app.api"]
+    restart: unless-stopped
+
+  producer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${PRODUCER_METRICS_PORT:-9101}:9101"
+    command: ["python", "-m", "app.workers.producer"]
+    restart: unless-stopped
+
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${CONSUMER_METRICS_PORT:-9102}:9102"
+    command: ["python", "-m", "app.workers.consumer"]
+    restart: unless-stopped
+
+  saver:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${SAVER_METRICS_PORT:-9103}:9103"
+    command: ["python", "-m", "app.workers.saver"]
+    restart: unless-stopped
+
+volumes:
+  redis-data:
