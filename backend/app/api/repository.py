@@ -78,7 +78,12 @@ class MySQLSourceRepo(SourceRepo):
             import pymysql
 
             self._conn = pymysql.connect(**self._params)
+        else:
+            self._conn.ping(reconnect=True)
         return self._conn
+
+    def _source_from_row(self, row) -> Source:
+        return Source(row[0], row[1], row[2], row[3], bool(row[4]), row[5], row[6], row[7])
 
     def create(self, source: Source) -> Source:
         conn = self._connect()
@@ -103,13 +108,13 @@ class MySQLSourceRepo(SourceRepo):
             row = cur.fetchone()
             if row is None:
                 return None
-            return Source(*row)
+            return self._source_from_row(row)
 
     def list(self) -> list[Source]:
         conn = self._connect()
         with conn.cursor() as cur:
             cur.execute("SELECT id, name, protocol, address, enabled, note, created_at, updated_at FROM sources")
-            return [Source(*row) for row in cur.fetchall()]
+            return [self._source_from_row(row) for row in cur.fetchall()]
 
     def update(self, source: Source) -> Source | None:
         conn = self._connect()
@@ -184,6 +189,8 @@ class MySQLTaskRepo(TaskRepo):
         if self._conn is None:
             import pymysql
             self._conn = pymysql.connect(**self._params)
+        else:
+            self._conn.ping(reconnect=True)
         return self._conn
 
     def create(self, task: Task) -> Task:

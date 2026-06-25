@@ -13,8 +13,8 @@ import pytest
 
 fakeredis = pytest.importorskip("fakeredis")
 
-from app.common import config as config_mod
-from app.workers import consumer as consumer_mod
+from app.common import config as config_mod  # noqa: E402
+from app.workers import consumer as consumer_mod  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

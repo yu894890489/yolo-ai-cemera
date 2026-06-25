@@ -6,7 +6,8 @@ import json
 
 import pytest
 
-from app.api.repository import InMemorySourceRepo
+from app.api.models import Source
+from app.api.repository import InMemorySourceRepo, MySQLSourceRepo, MySQLTaskRepo
 from app.api.sources import make_sources_blueprint
 
 
@@ -132,3 +133,74 @@ class TestDeleteSource:
     def test_delete_returns_404_for_missing(self, client):
         resp = client.delete("/api/sources/nonexistent")
         assert resp.status_code == 404
+
+
+class TestMySQLSourceRepo:
+    def test_get_converts_enabled_to_boolean(self):
+        repo = MySQLSourceRepo({})
+        repo._connect = lambda: _FakeConnection([("src1", "Cam 1", "rtsp", "rtsp://x", 1, "", "created", "updated")])
+
+        source = repo.get("src1")
+
+        assert source == Source("src1", "Cam 1", "rtsp", "rtsp://x", True, "", "created", "updated")
+        assert isinstance(source.enabled, bool)
+
+    def test_list_converts_enabled_to_boolean(self):
+        repo = MySQLSourceRepo({})
+        repo._connect = lambda: _FakeConnection([("src1", "Cam 1", "rtsp", "rtsp://x", 0, "", "created", "updated")])
+
+        sources = repo.list()
+
+        assert sources[0].enabled is False
+
+    def test_connect_reconnects_stale_connection(self):
+        repo = MySQLSourceRepo({})
+        conn = _FakeConnection([])
+        repo._conn = conn
+
+        assert repo._connect() is conn
+
+        assert conn.ping_calls == [(True,)]
+
+
+class TestMySQLTaskRepo:
+    def test_connect_reconnects_stale_connection(self):
+        repo = MySQLTaskRepo({})
+        conn = _FakeConnection([])
+        repo._conn = conn
+
+        assert repo._connect() is conn
+
+        assert conn.ping_calls == [(True,)]
+
+
+class _FakeConnection:
+    def __init__(self, rows):
+        self.rows = rows
+        self.ping_calls = []
+
+    def ping(self, reconnect=False):
+        self.ping_calls.append((reconnect,))
+
+    def cursor(self):
+        return _FakeCursor(self.rows)
+
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def execute(self, sql, params=None):
+        pass
+
+    def fetchone(self):
+        return self.rows[0]
+
+    def fetchall(self):
+        return self.rows

@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from dataclasses import asdict
+import json
+import os
 from typing import Any
 
 from flask import Blueprint, jsonify, request
@@ -17,10 +19,15 @@ def _error(message: str, status: int = 422):
     return jsonify({"error": message}), status
 
 
+def _preview_url(task_id: str) -> str:
+    base_url = os.environ.get("MEDIAMTX_HLS_BASE_URL", "/hls")
+    return f"{base_url.rstrip('/')}/{task_id}/index.m3u8"
+
+
 def _task_json(task: Task) -> dict[str, Any]:
     data = asdict(task)
     if task.status == "running":
-        data["preview_url"] = f"/hls/{task.id}/index.m3u8"
+        data["preview_url"] = _preview_url(task.id)
     return data
 
 
@@ -42,8 +49,10 @@ def _task_from_payload(data: dict[str, Any]) -> tuple[Task | None, str | None]:
         roi = ""
     if prompt is None:
         prompt = ""
+    if isinstance(roi, list | dict):
+        roi = json.dumps(roi)
     if not isinstance(roi, str):
-        return None, "roi must be string"
+        return None, "roi must be string or structured JSON"
     if not isinstance(prompt, str):
         return None, "prompt must be string"
     return Task(
@@ -72,14 +81,19 @@ class RedisConfigPublisher(ConfigPublisher):
         self._redis = redis_client
 
     def publish_started(self, task: Task, source: Source) -> None:
-        self._redis.set(f"task:{task.id}", _config_value(task, source))
+        with self._redis.pipeline(transaction=True) as pipe:
+            pipe.set(f"task:{task.id}", _config_value(task, source))
+            pipe.sadd("tasks:active", task.id)
+            pipe.execute()
 
     def publish_stopped(self, task: Task) -> None:
-        self._redis.delete(f"task:{task.id}")
+        with self._redis.pipeline(transaction=True) as pipe:
+            pipe.delete(f"task:{task.id}")
+            pipe.srem("tasks:active", task.id)
+            pipe.execute()
 
 
 def _config_value(task: Task, source: Source) -> str:
-    import json
     return json.dumps({
         "task_id": task.id,
         "source_id": source.id,
@@ -127,11 +141,27 @@ def make_tasks_blueprint(
         if task is None:
             return _error("task not found", 404)
         source = source_repo.get(task.source_id)
+        if source is None:
+            task.status = "error"
+            task.error_message = "task source does not exist"
+            task_repo.update(task)
+            return _error("task source does not exist", 409)
+        if not source.enabled:
+            task.status = "error"
+            task.error_message = "task source is disabled"
+            task_repo.update(task)
+            return _error("task source is disabled", 409)
+        try:
+            if config_publisher is not None:
+                config_publisher.publish_started(task, source)
+        except Exception as exc:
+            task.status = "error"
+            task.error_message = str(exc)
+            task_repo.update(task)
+            return _error("failed to publish runtime config", 500)
         task.status = "running"
         task.error_message = ""
         task_repo.update(task)
-        if config_publisher is not None and source is not None:
-            config_publisher.publish_started(task, source)
         return jsonify(_task_json(task))
 
     @bp.post("/tasks/<task_id>/stop")
@@ -155,7 +185,7 @@ def make_tasks_blueprint(
                 "id": task.id,
                 "status": task.status,
                 "error_message": task.error_message,
-                **({"preview_url": f"/hls/{task.id}/index.m3u8"} if task.status == "running" else {}),
+                **({"preview_url": _preview_url(task.id)} if task.status == "running" else {}),
             }
         )
 

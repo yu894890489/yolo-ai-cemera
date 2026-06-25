@@ -14,6 +14,7 @@ Run with ``python -m app.workers.producer`` inside the container.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -44,8 +45,9 @@ class DummySource:
         "AAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AL+AB//Z"
     )
 
-    def __init__(self, task_id: str) -> None:
+    def __init__(self, task_id: str, source_address: str = "dummy") -> None:
         self.task_id = task_id
+        self.source_address = source_address
         self._seq = 0
 
     def next_frame(self) -> tuple[int, bytes] | None:
@@ -62,6 +64,7 @@ class ProducerWorker(WorkerBase):
         super().__init__()
         self.client = None
         self.source: DummySource | None = None
+        self._source_mode = "demo"
 
     def setup(self) -> None:
         self.client = make_client(self.cfg)
@@ -71,20 +74,50 @@ class ProducerWorker(WorkerBase):
         self.source = DummySource(task_id=task_id)
         logger.info("producer: source task_id=%s", task_id)
 
+    def _load_runtime_source(self) -> DummySource | None:
+        assert self.client is not None
+        task_ids = sorted(self.client.smembers("tasks:active"))
+        for task_id in task_ids:
+            raw = self.client.get(f"task:{task_id}")
+            if raw is None:
+                continue
+            config = json.loads(raw)
+            if self._source_mode == "runtime" and self.source is not None and self.source.task_id == config["task_id"]:
+                return self.source
+            return DummySource(task_id=config["task_id"], source_address=config["source_address"])
+        return None
+
+    def _fallback_source(self) -> DummySource:
+        task_id = os.environ.get("DEMO_TASK_ID", "demo")
+        if self._source_mode == "demo" and self.source is not None and self.source.task_id == task_id:
+            return self.source
+        return DummySource(task_id=task_id)
+
     def step(self) -> None:
-        assert self.client is not None and self.source is not None
-        result = self.source.next_frame()
+        assert self.client is not None
+        source = self._load_runtime_source()
+        if source is not None:
+            self._source_mode = "runtime"
+            self.source = source
+        elif self._source_mode == "runtime":
+            self.source = None
+            return
+        else:
+            source = self._fallback_source()
+            self._source_mode = "demo"
+            self.source = source
+        result = source.next_frame()
         if result is None:
             return
         seq, frame_b64 = result
-        stream = f"{self.cfg.streams.frame_prefix}{self.source.task_id}"
+        stream = f"{self.cfg.streams.frame_prefix}{source.task_id}"
         # ``XADD ... MAXLEN ~`` is the contract; redis-py exposes it as
         # ``maxlen`` + ``approximate=True``.
         try:
             self.client.xadd(
                 stream,
                 {
-                    "task_id": self.source.task_id,
+                    "task_id": source.task_id,
                     "seq": str(seq),
                     "ts_ms": str(int(time.time() * 1000)),
                     "frame_jpeg_b64": frame_b64.decode("ascii"),
@@ -92,7 +125,7 @@ class ProducerWorker(WorkerBase):
                 maxlen=_FRAME_STREAM_MAXLEN_APPROX,
                 approximate=True,
             )
-            self.metrics.frame_in_total.labels(task_id=self.source.task_id).inc()
+            self.metrics.frame_in_total.labels(task_id=source.task_id).inc()
         except Exception:
             self.metrics.frame_drop_total.labels(reason="xadd_error").inc()
             raise
