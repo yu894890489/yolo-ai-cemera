@@ -22,8 +22,14 @@ from prometheus_client import CollectorRegistry, Gauge, generate_latest
 from app.common.config import get_config
 from app.common.signals import install_sighup
 from app.common.streams import make_client
+from app.common.vlm import VLMRuntimeState
 
 logger = logging.getLogger(__name__)
+_vlm_runtime_state = VLMRuntimeState()
+
+
+def get_vlm_runtime_state() -> VLMRuntimeState:
+    return _vlm_runtime_state
 
 
 def create_app() -> Flask:
@@ -68,6 +74,33 @@ def create_app() -> Flask:
     @app.get("/healthz")
     def healthz():
         return jsonify({"status": "ok"})
+
+    @app.get("/api/runtime/status")
+    def runtime_status():
+        active_cfg = get_config()
+        vlm_state = get_vlm_runtime_state()
+        return jsonify(
+            {
+                "config_version": active_cfg.version,
+                "task": {
+                    "confidence": active_cfg.task.confidence,
+                    "roi": active_cfg.task.roi,
+                    "prompt": active_cfg.task.prompt,
+                    "vlm_enabled": active_cfg.task.vlm_enabled,
+                },
+                "vlm": {
+                    "enabled": active_cfg.task.vlm_enabled,
+                    "active_provider": vlm_state.active_provider,
+                    "last_error": vlm_state.last_error,
+                    "last_failure_reason": vlm_state.last_failure_reason,
+                    "degraded_mode": vlm_state.degraded_mode,
+                    "queue_high_watermark": active_cfg.vlm.queue_high_watermark,
+                    "queue_timeout_ms": active_cfg.vlm.queue_timeout_ms,
+                    "disable_thinking": active_cfg.vlm.disable_thinking,
+                    "max_retries": active_cfg.vlm.max_retries,
+                },
+            }
+        )
 
     @app.get("/metrics")
     def metrics():
