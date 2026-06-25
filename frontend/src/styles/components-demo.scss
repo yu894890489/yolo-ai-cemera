@@ -1,0 +1,50 @@
+@use '../styles/tokens' as t;
+
+.demo-shell {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: t.$space-xl;
+}
+
+.demo-section {
+  background: t.$color-surface;
+  border: 1px solid t.$color-neutral-300;
+  border-radius: t.$radius-lg;
+  padding: t.$space-lg t.$space-xl;
+  margin-bottom: t.$space-xl;
+
+  h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    color: t.$color-neutral-900;
+  }
+
+  .demo-section__sub {
+    font-size: 12px;
+    color: t.$color-neutral-500;
+    margin: 0 0 t.$space-md;
+  }
+
+  .demo-controls {
+    display: flex;
+    gap: t.$space-sm;
+    flex-wrap: wrap;
+    margin-bottom: t.$space-md;
+  }
+
+  .demo-result {
+    margin-top: t.$space-sm;
+    font-size: 12px;
+    color: t.$color-neutral-500;
+  }
+
+  .demo-output {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-sm;
+
+    &.is-row {
+      flex-flow: row wrap;
+    }
+  }
+}
