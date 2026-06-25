@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any
 
+from app.common.vlm import VLMEndpoint
+
 logger = logging.getLogger(__name__)
 
 
@@ -72,6 +74,23 @@ class YoloConfig:
 
 
 @dataclass
+class TaskConfig:
+    confidence: float = 0.5
+    roi: list[int] | None = None
+    prompt: str = ""
+    vlm_enabled: bool = False
+
+
+@dataclass
+class VLMConfig:
+    queue_high_watermark: int = 100
+    queue_timeout_ms: int = 30000
+    disable_thinking: bool = False
+    max_retries: int = 2
+    backoff_base_s: float = 0.2
+
+
+@dataclass
 class AppConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     mysql: MySQLConfig = field(default_factory=MySQLConfig)
@@ -79,12 +98,16 @@ class AppConfig:
     streams: StreamConfig = field(default_factory=StreamConfig)
     ports: WorkerPorts = field(default_factory=WorkerPorts)
     yolo: YoloConfig = field(default_factory=YoloConfig)
+    task: TaskConfig = field(default_factory=TaskConfig)
+    vlm: VLMConfig = field(default_factory=VLMConfig)
     flask_secret_key: str = "change-me"
     overlay: dict[str, Any] = field(default_factory=dict)
+    version: int = 0
 
 
 _lock = RLock()
 _cached: AppConfig | None = None
+_version: int = 0
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -108,6 +131,56 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.lower() in ("1", "true", "yes", "y", "on")
+
+
+def _parse_bool(raw: Any) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() in ("1", "true", "yes", "y", "on")
+
+
+def _parse_roi(raw: Any) -> list[int]:
+    if isinstance(raw, list):
+        vals = raw
+    else:
+        vals = [part.strip() for part in str(raw).split(",") if part.strip()]
+    roi = [int(val) for val in vals]
+    if len(roi) != 4:
+        raise ValueError("task.roi must contain exactly four integers")
+    return roi
+
+
+def _overlay_keys(before: AppConfig, after: AppConfig) -> list[str]:
+    changed: list[str] = []
+    if before.task != after.task:
+        changed.extend(key for key in after.overlay if key.startswith("task."))
+    if before.vlm != after.vlm:
+        changed.extend(key for key in after.overlay if key.startswith("vlm."))
+    return sorted(set(changed))
+
+
+def apply_overlay(cfg: AppConfig, overlay: dict[str, Any]) -> AppConfig:
+    cfg.overlay = overlay
+    for key, raw in overlay.items():
+        if key == "task.confidence":
+            cfg.task.confidence = float(raw)
+        elif key == "task.roi":
+            cfg.task.roi = _parse_roi(raw)
+        elif key == "task.prompt":
+            cfg.task.prompt = str(raw)
+        elif key == "task.vlm_enabled":
+            cfg.task.vlm_enabled = _parse_bool(raw)
+        elif key == "vlm.queue_high_watermark":
+            cfg.vlm.queue_high_watermark = int(raw)
+        elif key == "vlm.queue_timeout_ms":
+            cfg.vlm.queue_timeout_ms = int(raw)
+        elif key == "vlm.disable_thinking":
+            cfg.vlm.disable_thinking = _parse_bool(raw)
+        elif key == "vlm.max_retries":
+            cfg.vlm.max_retries = int(raw)
+        elif key == "vlm.backoff_base_s":
+            cfg.vlm.backoff_base_s = float(raw)
+    return cfg
 
 
 def load_from_env() -> AppConfig:
@@ -204,19 +277,78 @@ def fetch_mysql_overlay(cfg: AppConfig) -> dict[str, Any]:
         conn.close()
 
 
+def fetch_vlm_endpoints(cfg: AppConfig) -> list[VLMEndpoint]:
+    """Read cloud VLM provider configuration from ``vlm_endpoints``.
+
+    The expected columns are provider, endpoint_url, enabled, priority,
+    timeout_ms and max_tokens. Missing table or database connectivity is
+    non-fatal so the small-only path stays available.
+    """
+    try:
+        import pymysql  # type: ignore
+    except ImportError:
+        logger.debug("pymysql not installed; skipping vlm_endpoints")
+        return []
+
+    try:
+        conn = pymysql.connect(
+            host=cfg.mysql.host,
+            port=cfg.mysql.port,
+            user=cfg.mysql.user,
+            password=cfg.mysql.password,
+            database=cfg.mysql.db,
+            connect_timeout=3,
+            read_timeout=3,
+        )
+    except Exception as exc:  # pragma: no cover - depends on env
+        logger.warning("vlm_endpoints unavailable (%s); VLM disabled", exc)
+        return []
+
+    try:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "SELECT provider, endpoint_url, enabled, priority, timeout_ms, max_tokens "
+                    "FROM vlm_endpoints ORDER BY priority ASC"
+                )
+            except Exception as exc:
+                logger.info("vlm_endpoints not ready (%s); VLM disabled", exc)
+                return []
+            return [
+                VLMEndpoint(
+                    provider=str(row[0]),
+                    url=str(row[1]),
+                    enabled=bool(row[2]),
+                    priority=int(row[3]),
+                    timeout_s=float(row[4]) / 1000.0,
+                    max_tokens=int(row[5]),
+                )
+                for row in (cur.fetchall() or [])
+            ]
+    finally:
+        conn.close()
+
+
 def reload_config() -> AppConfig:
-    """Re-read env + MySQL overlay; called on SIGHUP."""
-    global _cached
+    global _cached, _version
+    old = _cached or load_from_env()
     cfg = load_from_env()
-    cfg.overlay = fetch_mysql_overlay(cfg)
+    overlay = fetch_mysql_overlay(cfg)
+    try:
+        apply_overlay(cfg, overlay)
+    except Exception as exc:
+        logger.error("config reload REJECTED — overlay parse failed: %s", exc)
+        return old
+    _version += 1
+    cfg.version = _version
+    changed = _overlay_keys(old, cfg)
     with _lock:
         _cached = cfg
     logger.info(
-        "config reloaded: %d overlay keys, ports producer=%d consumer=%d saver=%d",
+        "config reloaded: version=%d overlay_keys=%d changed=%s",
+        cfg.version,
         len(cfg.overlay),
-        cfg.ports.producer,
-        cfg.ports.consumer,
-        cfg.ports.saver,
+        changed if changed else "none",
     )
     return cfg
 
@@ -228,4 +360,5 @@ def get_config() -> AppConfig:
         if _cached is None:
             _cached = load_from_env()
             _cached.overlay = fetch_mysql_overlay(_cached)
+            apply_overlay(_cached, _cached.overlay)
         return _cached
