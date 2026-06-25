@@ -77,3 +77,11 @@ def test_reload_config_replaces_cache(monkeypatch):
     assert second.redis.host == "second"
 
     assert config_mod.get_config().redis.host == "second"
+
+
+def test_load_from_env_respects_mediamtx_hls_base_url(monkeypatch):
+    monkeypatch.setenv("MEDIAMTX_HLS_BASE_URL", "http://mediamtx.local:8888")
+
+    cfg = config_mod.load_from_env()
+
+    assert cfg.mediamtx.hls_base_url == "http://mediamtx.local:8888"

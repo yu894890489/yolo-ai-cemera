@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-fakeredis = pytest.importorskip("fakeredis")
-
 from app.common import streams
+
+fakeredis = pytest.importorskip("fakeredis")
 
 
 @pytest.fixture

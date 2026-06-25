@@ -63,7 +63,12 @@ def create_app() -> Flask:
     config_publisher = RedisConfigPublisher(redis_client)
     app.register_blueprint(make_sources_blueprint(source_repo), url_prefix="/api")
     app.register_blueprint(
-        make_tasks_blueprint(task_repo, source_repo, config_publisher=config_publisher),
+        make_tasks_blueprint(
+            task_repo,
+            source_repo,
+            config_publisher=config_publisher,
+            preview_base_url=cfg.mediamtx.hls_base_url,
+        ),
         url_prefix="/api",
     )
     _clients: set = set()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 from abc import ABC, abstractmethod
 
 from dataclasses import asdict
@@ -17,11 +19,37 @@ def _error(message: str, status: int = 422):
     return jsonify({"error": message}), status
 
 
-def _task_json(task: Task) -> dict[str, Any]:
+def _preview_url(task: Task, preview_base_url: str = "") -> str:
+    path = f"/hls/{task.id}/index.m3u8"
+    if not preview_base_url:
+        return path
+    return f"{preview_base_url.rstrip('/')}{path}"
+
+
+def _task_json(task: Task, preview_base_url: str = "") -> dict[str, Any]:
     data = asdict(task)
     if task.status == "running":
-        data["preview_url"] = f"/hls/{task.id}/index.m3u8"
+        data["preview_url"] = _preview_url(task, preview_base_url)
     return data
+
+
+def _roi_coordinate(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _normalize_roi(roi: Any) -> tuple[str, str | None]:
+    if roi is None:
+        return "", None
+    if isinstance(roi, str):
+        return roi, None
+    if isinstance(roi, list) and len(roi) >= 3 and all(
+        isinstance(point, list | tuple)
+        and len(point) == 2
+        and all(_roi_coordinate(value) for value in point)
+        for point in roi
+    ):
+        return json.dumps(roi), None
+    return "", "roi must be string or polygon list of [x, y] points"
 
 
 def _task_from_payload(data: dict[str, Any]) -> tuple[Task | None, str | None]:
@@ -36,14 +64,12 @@ def _task_from_payload(data: dict[str, Any]) -> tuple[Task | None, str | None]:
     confidence = data.get("confidence", 0.5)
     if not isinstance(confidence, int | float) or confidence < 0 or confidence > 1:
         return None, "confidence must be between 0 and 1"
-    roi = data.get("roi", "")
+    roi, roi_err = _normalize_roi(data.get("roi", ""))
+    if roi_err:
+        return None, roi_err
     prompt = data.get("prompt", "")
-    if roi is None:
-        roi = ""
     if prompt is None:
         prompt = ""
-    if not isinstance(roi, str):
-        return None, "roi must be string"
     if not isinstance(prompt, str):
         return None, "prompt must be string"
     return Task(
@@ -97,6 +123,7 @@ def make_tasks_blueprint(
     task_repo: TaskRepo,
     source_repo: SourceRepo,
     config_publisher: ConfigPublisher | None = None,
+    preview_base_url: str = "",
 ) -> Blueprint:
     bp = Blueprint("tasks", __name__)
 
@@ -108,18 +135,18 @@ def make_tasks_blueprint(
         assert task is not None
         if source_repo.get(task.source_id) is None:
             return _error("source_id does not exist")
-        return jsonify(_task_json(task_repo.create(task))), 201
+        return jsonify(_task_json(task_repo.create(task), preview_base_url)), 201
 
     @bp.get("/tasks")
     def list_tasks():
-        return jsonify([_task_json(task) for task in task_repo.list()])
+        return jsonify([_task_json(task, preview_base_url) for task in task_repo.list()])
 
     @bp.get("/tasks/<task_id>")
     def get_task(task_id: str):
         task = task_repo.get(task_id)
         if task is None:
             return _error("task not found", 404)
-        return jsonify(_task_json(task))
+        return jsonify(_task_json(task, preview_base_url))
 
     @bp.post("/tasks/<task_id>/start")
     def start_task(task_id: str):
@@ -127,12 +154,36 @@ def make_tasks_blueprint(
         if task is None:
             return _error("task not found", 404)
         source = source_repo.get(task.source_id)
+        if source is None:
+            task.status = "error"
+            task.error_message = "source not found"
+            task_repo.update(task)
+            return _error("source not found", 409)
+        if not source.enabled:
+            task.status = "error"
+            task.error_message = "source disabled"
+            task_repo.update(task)
+            return _error("source disabled", 409)
+        if config_publisher is not None:
+            try:
+                config_publisher.publish_started(task, source)
+            except Exception:
+                task.status = "error"
+                task.error_message = "failed to publish runtime config"
+                task_repo.update(task)
+                return _error(task.error_message, 500)
         task.status = "running"
         task.error_message = ""
-        task_repo.update(task)
-        if config_publisher is not None and source is not None:
-            config_publisher.publish_started(task, source)
-        return jsonify(_task_json(task))
+        try:
+            task_repo.update(task)
+        except Exception:
+            task.status = "error"
+            task.error_message = "failed to update task status"
+            if config_publisher is not None:
+                config_publisher.publish_stopped(task)
+            task_repo.update(task)
+            return _error(task.error_message, 500)
+        return jsonify(_task_json(task, preview_base_url))
 
     @bp.post("/tasks/<task_id>/stop")
     def stop_task(task_id: str):
@@ -143,7 +194,7 @@ def make_tasks_blueprint(
         task_repo.update(task)
         if config_publisher is not None:
             config_publisher.publish_stopped(task)
-        return jsonify(_task_json(task))
+        return jsonify(_task_json(task, preview_base_url))
 
     @bp.get("/tasks/<task_id>/status")
     def task_status(task_id: str):
@@ -155,7 +206,7 @@ def make_tasks_blueprint(
                 "id": task.id,
                 "status": task.status,
                 "error_message": task.error_message,
-                **({"preview_url": f"/hls/{task.id}/index.m3u8"} if task.status == "running" else {}),
+                **({"preview_url": _preview_url(task, preview_base_url)} if task.status == "running" else {}),
             }
         )
 

@@ -1,9 +1,9 @@
-"""Data access layer for video sources.
+"""Data access layer for video sources and tasks.
 
 Two implementations:
 
-* :class:`InMemorySourceRepo` — in-process dict, used in tests.
-* :class:`MySQLSourceRepo` — real MySQL backed (M1 production).
+* :class:`InMemorySourceRepo` / :class:`InMemoryTaskRepo` — in-process dict, used in tests.
+* :class:`MySQLSourceRepo` / :class:`MySQLTaskRepo` — real MySQL backed (M1 production).
 """
 
 from __future__ import annotations
@@ -74,11 +74,23 @@ class MySQLSourceRepo(SourceRepo):
         self._conn = None
 
     def _connect(self):
-        if self._conn is None:
-            import pymysql
+        if self._conn is not None:
+            try:
+                self._conn.ping(reconnect=True)
+                return self._conn
+            except Exception:
+                self._conn = None
+        import pymysql
 
-            self._conn = pymysql.connect(**self._params)
+        self._conn = pymysql.connect(**self._params)
         return self._conn
+
+    @staticmethod
+    def _source_from_row(row) -> Source:
+        return Source(
+            id=row[0], name=row[1], protocol=row[2], address=row[3],
+            enabled=bool(row[4]), note=row[5], created_at=row[6], updated_at=row[7],
+        )
 
     def create(self, source: Source) -> Source:
         conn = self._connect()
@@ -103,13 +115,13 @@ class MySQLSourceRepo(SourceRepo):
             row = cur.fetchone()
             if row is None:
                 return None
-            return Source(*row)
+            return self._source_from_row(row)
 
     def list(self) -> list[Source]:
         conn = self._connect()
         with conn.cursor() as cur:
             cur.execute("SELECT id, name, protocol, address, enabled, note, created_at, updated_at FROM sources")
-            return [Source(*row) for row in cur.fetchall()]
+            return [self._source_from_row(row) for row in cur.fetchall()]
 
     def update(self, source: Source) -> Source | None:
         conn = self._connect()
@@ -181,9 +193,15 @@ class MySQLTaskRepo(TaskRepo):
         self._conn = None
 
     def _connect(self):
-        if self._conn is None:
-            import pymysql
-            self._conn = pymysql.connect(**self._params)
+        if self._conn is not None:
+            try:
+                self._conn.ping(reconnect=True)
+                return self._conn
+            except Exception:
+                self._conn = None
+        import pymysql
+
+        self._conn = pymysql.connect(**self._params)
         return self._conn
 
     def create(self, task: Task) -> Task:

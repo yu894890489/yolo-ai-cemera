@@ -72,10 +72,16 @@ class YoloConfig:
 
 
 @dataclass
+class MediaMTXConfig:
+    hls_base_url: str = ""
+
+
+@dataclass
 class AppConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     mysql: MySQLConfig = field(default_factory=MySQLConfig)
     minio: MinioConfig = field(default_factory=MinioConfig)
+    mediamtx: MediaMTXConfig = field(default_factory=MediaMTXConfig)
     streams: StreamConfig = field(default_factory=StreamConfig)
     ports: WorkerPorts = field(default_factory=WorkerPorts)
     yolo: YoloConfig = field(default_factory=YoloConfig)
@@ -136,6 +142,9 @@ def load_from_env() -> AppConfig:
             bucket_alarms=_env("MINIO_BUCKET_ALARMS", "alarms") or "alarms",
             bucket_recordings=_env("MINIO_BUCKET_RECORDINGS", "recordings") or "recordings",
             secure=_env_bool("MINIO_SECURE", False),
+        ),
+        mediamtx=MediaMTXConfig(
+            hls_base_url=_env("MEDIAMTX_HLS_BASE_URL", "") or "",
         ),
         streams=StreamConfig(
             frame_prefix=_env("STREAM_FRAME_PREFIX", "frame:") or "frame:",

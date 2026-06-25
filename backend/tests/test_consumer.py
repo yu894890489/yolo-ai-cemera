@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-fakeredis = pytest.importorskip("fakeredis")
-
 from app.common import config as config_mod
 from app.workers import consumer as consumer_mod
+
+fakeredis = pytest.importorskip("fakeredis")
 
 
 @pytest.fixture(autouse=True)
