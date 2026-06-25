@@ -1,0 +1,57 @@
+@use '../../styles/tokens' as t;
+
+.mc-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: t.$space-lg;
+  padding: t.$space-lg t.$space-xl;
+  background: t.$color-surface;
+  border-bottom: 1px solid t.$color-neutral-300;
+
+  &__left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__breadcrumbs {
+    font-size: 12px;
+    color: t.$color-neutral-500;
+    margin-bottom: 4px;
+
+    a {
+      color: t.$color-neutral-500;
+      text-decoration: none;
+
+      &:hover {
+        color: t.$color-primary;
+      }
+    }
+  }
+
+  &__sep {
+    margin: 0 6px;
+    color: t.$color-neutral-300;
+  }
+
+  &__title {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: t.$color-neutral-900;
+    margin: 0;
+  }
+
+  &__subtitle {
+    font-size: 13px;
+    color: t.$color-neutral-500;
+    margin: 4px 0 0;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: t.$space-sm;
+    flex-wrap: wrap;
+  }
+}

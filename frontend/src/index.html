@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YOLO-VLM · 组件库 Demo</title>
+  </head>
+  <body>
+    <main id="component-demo" class="demo-shell">
+      <h1 style="margin-bottom: 24px;">YOLO-VLM 通用组件库 Demo</h1>
+
+      <section class="demo-section" data-demo="datatable">
+        <h2>DataTable</h2>
+        <p class="demo-section__sub">排序 / 筛选 / 分页 / 列宽拖拽 / 空态</p>
+        <div class="demo-controls">
+          <button class="mc-btn" id="dt-empty-btn">演示空态</button>
+          <button class="mc-btn" id="dt-reset-btn">恢复数据</button>
+        </div>
+        <div class="demo-output"></div>
+      </section>
+
+      <section class="demo-section" data-demo="formfield">
+        <h2>FormField</h2>
+        <p class="demo-section__sub">label + 校验信息 + 帮助文本</p>
+        <div class="demo-controls">
+          <button class="mc-btn mc-btn--danger" id="ff-error-btn">显示错误</button>
+          <button class="mc-btn mc-btn--primary" id="ff-help-btn">校验通过</button>
+        </div>
+        <div class="demo-output"></div>
+      </section>
+
+      <section class="demo-section" data-demo="confirm">
+        <h2>ConfirmDialog</h2>
+        <p class="demo-section__sub">基于 Promise 的确认弹窗</p>
+        <div class="demo-controls">
+          <button class="mc-btn mc-btn--danger" id="confirm-normal">危险确认</button>
+          <button class="mc-btn" id="confirm-info">普通确认</button>
+        </div>
+        <div class="demo-result">结果: —</div>
+      </section>
+
+      <section class="demo-section" data-demo="toast">
+        <h2>Toast</h2>
+        <p class="demo-section__sub">成功 / 失败 / 警告 / 信息，自动堆叠</p>
+        <div class="demo-controls">
+          <button class="mc-btn mc-btn--primary" id="toast-success">成功</button>
+          <button class="mc-btn mc-btn--danger" id="toast-error">失败</button>
+          <button class="mc-btn" id="toast-warning">警告</button>
+          <button class="mc-btn" id="toast-info">信息</button>
+        </div>
+      </section>
+
+      <section class="demo-section" data-demo="statusbadge">
+        <h2>StatusBadge</h2>
+        <p class="demo-section__sub">任务状态、告警等级</p>
+        <div class="demo-output is-row"></div>
+      </section>
+
+      <section class="demo-section" data-demo="emptystate">
+        <h2>EmptyState</h2>
+        <p class="demo-section__sub">空数据 / 无权限 / 无结果</p>
+        <div class="demo-output"></div>
+      </section>
+
+      <section class="demo-section" data-demo="skeleton">
+        <h2>LoadingSkeleton</h2>
+        <p class="demo-section__sub">加载占位（line / block / circle）</p>
+        <div class="demo-output"></div>
+      </section>
+
+      <section class="demo-section" data-demo="pageheader">
+        <h2>PageHeader</h2>
+        <p class="demo-section__sub">标题 + 面包屑 + 操作按钮槽</p>
+        <div class="demo-output"></div>
+      </section>
+    </main>
+    <script type="module" src="/entries/components-demo.ts"></script>
+  </body>
+</html>

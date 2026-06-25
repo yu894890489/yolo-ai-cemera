@@ -1,0 +1,59 @@
+@use '../../styles/tokens' as t;
+
+.mc-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin-bottom: t.$space-md;
+
+  &__label {
+    font-size: 13px;
+    font-weight: 600;
+    color: t.$color-neutral-700;
+  }
+
+  &__required {
+    color: t.$color-danger;
+    margin-left: 2px;
+  }
+
+  &__control {
+    input,
+    select,
+    textarea {
+      width: 100%;
+      padding: 6px t.$space-sm;
+      font-size: 14px;
+      line-height: 1.4;
+      color: t.$color-neutral-900;
+      background: t.$color-surface;
+      border: 1px solid t.$color-neutral-300;
+      border-radius: t.$radius-md;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+      &:focus {
+        outline: none;
+        border-color: t.$color-primary;
+        box-shadow: 0 0 0 3px rgb(47 111 237 / 18%);
+      }
+    }
+  }
+
+  &__help {
+    font-size: 12px;
+    color: t.$color-neutral-500;
+  }
+
+  &__error {
+    font-size: 12px;
+    color: t.$color-danger;
+  }
+
+  &.is-invalid &__control {
+    input,
+    select,
+    textarea {
+      border-color: t.$color-danger;
+    }
+  }
+}

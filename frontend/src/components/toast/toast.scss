@@ -1,0 +1,112 @@
+@use '../../styles/tokens' as t;
+
+.mc-toast-slot {
+  position: fixed;
+  top: t.$space-lg;
+  right: t.$space-lg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  z-index: t.$z-toast;
+  max-width: 360px;
+  pointer-events: none;
+}
+
+.mc-toast {
+  display: flex;
+  gap: t.$space-sm;
+  align-items: flex-start;
+  padding: t.$space-sm t.$space-md;
+  background: t.$color-surface;
+  border-left: 3px solid t.$color-info;
+  border-radius: t.$radius-md;
+  box-shadow: t.$shadow-md;
+  pointer-events: auto;
+  animation: mc-toast-in 0.18s ease-out;
+
+  &.is-leaving {
+    animation: mc-toast-out 0.18s ease-in forwards;
+  }
+
+  &__icon {
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: t.$color-info;
+  }
+
+  &__body {
+    flex: 1;
+    font-size: 13px;
+    color: t.$color-neutral-700;
+  }
+
+  &__title {
+    font-weight: 600;
+    color: t.$color-neutral-900;
+    margin-bottom: 2px;
+  }
+
+  &__msg {
+    line-height: 1.5;
+  }
+
+  &__close {
+    background: none;
+    border: 0;
+    font-size: 18px;
+    line-height: 1;
+    color: t.$color-neutral-500;
+    cursor: pointer;
+  }
+
+  &--success {
+    border-left-color: t.$color-success;
+
+    .mc-toast__icon {
+      background: t.$color-success;
+    }
+  }
+
+  &--error {
+    border-left-color: t.$color-danger;
+
+    .mc-toast__icon {
+      background: t.$color-danger;
+    }
+  }
+
+  &--warning {
+    border-left-color: t.$color-warning;
+
+    .mc-toast__icon {
+      background: t.$color-warning;
+    }
+  }
+}
+
+@keyframes mc-toast-in {
+  from {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes mc-toast-out {
+  to {
+    transform: translateY(-6px);
+    opacity: 0;
+  }
+}

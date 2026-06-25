@@ -1,0 +1,29 @@
+// Minimal token layer matching frontend/src/styles/tokens.ts.
+// FE-M0-A provides the full Bootstrap theme; this file is a self-contained
+// fallback so the component library + demo build standalone.
+
+$color-primary: #2f6fed;
+$color-success: #1aa260;
+$color-warning: #f59e0b;
+$color-danger: #dc2626;
+$color-info: #0ea5e9;
+$color-neutral-900: #0f172a;
+$color-neutral-700: #334155;
+$color-neutral-500: #64748b;
+$color-neutral-300: #cbd5e1;
+$color-neutral-100: #f1f5f9;
+$color-surface: #fff;
+$space-xs: 4px;
+$space-sm: 8px;
+$space-md: 12px;
+$space-lg: 16px;
+$space-xl: 24px;
+$space-xxl: 32px;
+$radius-sm: 4px;
+$radius-md: 6px;
+$radius-lg: 10px;
+$shadow-sm: 0 1px 2px rgb(15 23 42 / 6%);
+$shadow-md: 0 4px 12px rgb(15 23 42 / 10%);
+$shadow-lg: 0 12px 32px rgb(15 23 42 / 16%);
+$z-toast: 1080;
+$z-modal: 1050;

@@ -1,0 +1,93 @@
+@use '../../styles/tokens' as t;
+
+.mc-data-table {
+  display: block;
+  width: 100%;
+  background: t.$color-surface;
+  border: 1px solid t.$color-neutral-300;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 14px;
+  }
+
+  th,
+  td {
+    padding: t.$space-sm t.$space-md;
+    text-align: left;
+    border-bottom: 1px solid t.$color-neutral-100;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  thead {
+    background: t.$color-neutral-100;
+    color: t.$color-neutral-700;
+    font-weight: 600;
+  }
+
+  th {
+    position: relative;
+    user-select: none;
+
+    &.is-sortable {
+      cursor: pointer;
+
+      &:hover {
+        background: rgb(0 0 0 / 3%);
+      }
+    }
+  }
+
+  &__sort {
+    margin-left: t.$space-xs;
+    font-size: 11px;
+    color: t.$color-neutral-500;
+  }
+
+  &__resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+
+    &:hover {
+      background: t.$color-primary;
+    }
+  }
+
+  &__filter-row {
+    input {
+      width: 100%;
+      padding: 2px t.$space-xs;
+      font-size: 12px;
+      border: 1px solid t.$color-neutral-300;
+      border-radius: t.$radius-sm;
+    }
+  }
+
+  &__empty {
+    text-align: center;
+    color: t.$color-neutral-500;
+    padding: t.$space-xl;
+  }
+
+  &__pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    background: t.$color-neutral-100;
+    color: t.$color-neutral-700;
+    font-size: 13px;
+  }
+}

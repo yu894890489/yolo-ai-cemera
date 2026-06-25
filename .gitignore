@@ -11,6 +11,9 @@ htmlcov/
 .venv/
 venv/
 
+# Node
+node_modules/
+
 # Editors
 .idea/
 .vscode/
@@ -19,3 +22,4 @@ venv/
 # Build
 dist/
 build/
+app/static/frontend/

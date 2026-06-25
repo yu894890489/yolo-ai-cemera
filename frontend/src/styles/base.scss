@@ -1,0 +1,73 @@
+@use 'tokens' as t;
+@use 'sass:color';
+
+// Reusable component-library skin. Keeps the demo standalone — production
+// pages should load the full Bootstrap theme from FE-M0-A.
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Source Han Sans SC', 'PingFang SC', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: t.$color-neutral-900;
+  background: t.$color-neutral-100;
+}
+
+code,
+pre {
+  font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
+}
+
+button {
+  font-family: inherit;
+}
+
+.mc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  padding: t.$space-xs t.$space-md;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid t.$color-neutral-300;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  color: t.$color-neutral-700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    background: t.$color-neutral-100;
+  }
+
+  &--primary {
+    background: t.$color-primary;
+    border-color: t.$color-primary;
+    color: #fff;
+
+    &:hover {
+      background: color.scale(t.$color-primary, $lightness: -8%);
+    }
+  }
+
+  &--danger {
+    background: t.$color-danger;
+    border-color: t.$color-danger;
+    color: #fff;
+
+    &:hover {
+      background: color.scale(t.$color-danger, $lightness: -8%);
+    }
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

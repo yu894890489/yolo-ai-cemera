@@ -1,0 +1,78 @@
+@use '../../styles/tokens' as t;
+
+.mc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px t.$space-sm;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: t.$color-neutral-100;
+  color: t.$color-neutral-700;
+  white-space: nowrap;
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: t.$color-neutral-500;
+  }
+
+  &--success {
+    background: rgb(26 162 96 / 12%);
+    color: t.$color-success;
+
+    .mc-status__dot {
+      background: t.$color-success;
+    }
+  }
+
+  &--info {
+    background: rgb(14 165 233 / 12%);
+    color: t.$color-info;
+
+    .mc-status__dot {
+      background: t.$color-info;
+    }
+  }
+
+  &--warning {
+    background: rgb(245 158 11 / 14%);
+    color: #b45309;
+
+    .mc-status__dot {
+      background: t.$color-warning;
+    }
+  }
+
+  &--danger {
+    background: rgb(220 38 38 / 12%);
+    color: t.$color-danger;
+
+    .mc-status__dot {
+      background: t.$color-danger;
+    }
+  }
+
+  &--processing {
+    background: rgb(47 111 237 / 12%);
+    color: t.$color-primary;
+
+    .mc-status__dot {
+      background: t.$color-primary;
+      animation: mc-status-pulse 1.2s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes mc-status-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}

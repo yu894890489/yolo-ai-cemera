@@ -1,0 +1,29 @@
+@use '../../styles/tokens' as t;
+
+.mc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: t.$space-xxl t.$space-xl;
+  color: t.$color-neutral-500;
+  gap: t.$space-sm;
+
+  &__icon {
+    font-size: 40px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+
+  &__title {
+    font-size: 15px;
+    font-weight: 600;
+    color: t.$color-neutral-700;
+  }
+
+  &__desc {
+    font-size: 13px;
+    max-width: 320px;
+  }
+}

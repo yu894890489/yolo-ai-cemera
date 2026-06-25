@@ -1,0 +1,39 @@
+@use '../../styles/tokens' as t;
+
+.mc-confirm__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(15 23 42 / 45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: t.$z-modal;
+}
+
+.mc-confirm {
+  min-width: 320px;
+  max-width: 480px;
+  background: t.$color-surface;
+  border-radius: t.$radius-lg;
+  box-shadow: t.$shadow-lg;
+  padding: t.$space-xl;
+
+  &__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: t.$space-md;
+    color: t.$color-neutral-900;
+  }
+
+  &__body {
+    color: t.$color-neutral-700;
+    line-height: 1.6;
+    margin-bottom: t.$space-xl;
+  }
+
+  &__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: t.$space-sm;
+  }
+}
