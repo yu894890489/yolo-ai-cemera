@@ -207,21 +207,24 @@ class MockAlarmSocket implements AlarmSocketLike {
     const running = [...this.tasks.values()].filter((t) => t.status === 'running');
     const task = running[Math.floor(Math.random() * running.length)];
     if (!task) return;
+    const ms = Date.now();
+    const eid = rid();
+    const day = new Date(ms).toISOString().slice(0, 10).replace(/-/g, '/');
+    const vlmOk = Math.random() > 0.25;
     const payload = {
       alarm_id: rid(),
+      event_id: eid,
       task_id: task.id,
-      task_name: task.source_id,
-      rule_id: 'mock-rule',
+      rule_id: 'demo',
       class: MOCK_CLASSES[Math.floor(Math.random() * MOCK_CLASSES.length)],
       score: Math.round((0.6 + Math.random() * 0.39) * 100) / 100,
-      ts_ms: Date.now(),
-      vlm_reason: MOCK_REASONS[Math.floor(Math.random() * MOCK_REASONS.length)],
-      vlm_confidence: Math.round((0.7 + Math.random() * 0.29) * 100) / 100,
-      screenshot_url:
-        'data:image/svg+xml;utf8,' +
-        encodeURIComponent(
-          '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="68"><rect width="120" height="68" fill="#1f2937"/><text x="60" y="38" fill="#9ca3af" font-size="11" text-anchor="middle">mock crop</text></svg>',
-        ),
+      ts_ms: ms,
+      mode: vlmOk ? 'vlm' : 'small_only',
+      vlm_status: vlmOk ? 'ok' : 'skipped',
+      vlm_reason: vlmOk ? MOCK_REASONS[Math.floor(Math.random() * MOCK_REASONS.length)] : '',
+      vlm_confidence: vlmOk ? Math.round((0.7 + Math.random() * 0.29) * 100) / 100 : 0,
+      // 对齐后端：截图是 MinIO 对象 key（非直链）；离线 mock 无 MinIO，卡片会回落到「截图不可用」。
+      screenshot_object: `${day}/${eid}.jpg`,
     };
     this.onmessage?.({ data: JSON.stringify(payload) });
   }

@@ -2,13 +2,22 @@
  * 告警 WebSocket 客户端 + 载荷标准化。
  *
  * 后端：Flask `/ws` 把 Redis `ws:alarm` 频道的每条 JSON 原样下发。
- * M0 saver 的载荷为 {alarm_id, task_id, rule_id, class, score, ts_ms, object_name}，
- * 其中 score/ts_ms 经 Redis Stream 往往是字符串。BE-M1-B 会补 VLM 原因/置信度/截图直链/任务名。
+ * SaverWorker 推送字段（app/workers/saver.py）：
+ *   alarm_id / event_id / task_id / rule_id / class / score / mode /
+ *   vlm_status / vlm_reason / vlm_confidence / screenshot_object / ts_ms
+ * 其中 score / ts_ms / vlm_confidence 经 Redis Stream 往往是字符串。
  *
  * normalizeAlarm() 负责把上述差异收敛成稳定的 AlarmEvent，避免字段漂移击穿前端。
  */
 
-import type { AlarmEvent } from './types';
+import type { AlarmEvent, VlmStatus } from './types';
+
+const VLM_STATUSES: readonly VlmStatus[] = ['ok', 'failed', 'skipped', 'disabled', ''];
+
+function toVlmStatus(v: unknown): VlmStatus {
+  const s = v === null || v === undefined ? '' : String(v);
+  return (VLM_STATUSES as readonly string[]).includes(s) ? (s as VlmStatus) : '';
+}
 
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
@@ -30,16 +39,17 @@ export function normalizeAlarm(raw: unknown): AlarmEvent | null {
   if (!alarmId) return null;
   return {
     alarm_id: alarmId,
+    event_id: toStr(r.event_id),
     task_id: taskId ?? '',
     rule_id: toStr(r.rule_id),
     class: toStr(r.class),
     score: toNumber(r.score),
     ts_ms: toNumber(r.ts_ms),
-    object_name: toStr(r.object_name),
-    screenshot_url: toStr(r.screenshot_url),
+    mode: toStr(r.mode),
+    vlm_status: toVlmStatus(r.vlm_status),
     vlm_reason: toStr(r.vlm_reason),
     vlm_confidence: toNumber(r.vlm_confidence),
-    task_name: toStr(r.task_name),
+    screenshot_object: toStr(r.screenshot_object),
   };
 }
 

@@ -13,7 +13,7 @@ import { AlarmSocket, resolveWsUrl, type AlarmSocketOptions, type AlarmSocketLik
 export interface AppRuntime {
   api: Api;
   mock: boolean;
-  /** MinIO endpoint，用于把告警 object_name 拼成可访问 URL（来自 meta 或默认）。 */
+  /** MinIO endpoint，用于把告警 screenshot_object 拼成可访问 URL（来自 meta 或默认）。 */
   minioBase: string;
   createAlarmSocket(handlers: Omit<AlarmSocketOptions, 'url' | 'factory'>): AlarmSocket;
 }

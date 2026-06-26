@@ -5,7 +5,7 @@
  *   - Source / Task: app/api/models.py
  *   - sources / tasks 路由: app/api/sources.py, app/api/tasks.py
  *   - runtime/status: app/api/__init__.py
- *   - 告警 ws 载荷: app/workers/saver.py（M0 stub 形态，BE-M1-B 会扩展）
+ *   - 告警 ws 载荷: app/workers/saver.py（SaverWorker._persist_entry 的推送字典，BE-M1-B 已合入）
  */
 
 /** 任务状态枚举，对齐后端 Task.status。 */
@@ -90,32 +90,43 @@ export interface RuntimeStatus {
   };
 }
 
+/** VLM 判定状态，对齐 consumer：ok=已判定告警，failed=调用失败，skipped=降级跳过，disabled=未启用。 */
+export type VlmStatus = 'ok' | 'failed' | 'skipped' | 'disabled' | '';
+
 /**
  * 告警事件 — ws:alarm 推送的标准化形态。
  *
- * M0 saver 当前推送字段：alarm_id / task_id / rule_id / class / score / ts_ms / object_name。
- * BE-M1-B 会补充 VLM 判定原因、置信度、截图直链、任务名等；这里把后续字段标为可选，
- * 由 normalizeAlarm() 做向后兼容映射，避免前后端字段漂移导致前端崩溃。
+ * 后端 SaverWorker 把这些字段原样发布到 Redis `ws:alarm`，Flask `/ws` 直接透传：
+ *   alarm_id / event_id / task_id / rule_id / class / score / mode /
+ *   vlm_status / vlm_reason / vlm_confidence / screenshot_object / ts_ms
+ *
+ * 注意：
+ *   - 截图是 MinIO 对象 key（screenshot_object），需拼 endpoint+bucket 才能展示，后端不给直链；
+ *   - 没有 task_name 字段，前端用 task_id 兜底；
+ *   - 目标类别即 YOLO 命中类别 class；
+ *   - score / vlm_confidence 在 Redis 里是字符串，normalizeAlarm 统一转数字。
  */
 export interface AlarmEvent {
   alarm_id: string;
+  /** 3s 窗口去重 id（前端据此去重）。 */
+  event_id?: string | null;
   task_id: string;
-  /** 命中规则 id（M0）。 */
+  /** 命中规则 id。 */
   rule_id?: string | null;
-  /** 目标类别。 */
+  /** 目标类别（YOLO 命中类别）。 */
   class?: string | null;
-  /** YOLO 置信度 / 综合分值。 */
+  /** YOLO 置信度分值。 */
   score?: number | null;
   /** 毫秒时间戳。 */
   ts_ms?: number | null;
-  /** MinIO 对象 key（M0），需拼接 endpoint 才能展示。 */
-  object_name?: string | null;
-  /** 截图直链（BE-M1-B 期望补充）。 */
-  screenshot_url?: string | null;
-  /** VLM 判定原因（BE-M1-B 期望补充）。 */
+  /** 协同模式：vlm / small_only / default。 */
+  mode?: string | null;
+  /** VLM 判定状态。 */
+  vlm_status?: VlmStatus;
+  /** VLM 判定原因（仅 vlm_status='ok' 时有意义）。 */
   vlm_reason?: string | null;
-  /** VLM 置信度（BE-M1-B 期望补充，0-1）。 */
+  /** VLM 置信度（仅 vlm_status='ok' 时有意义，0-1；其余为 0）。 */
   vlm_confidence?: number | null;
-  /** 任务名（BE-M1-B 期望补充；否则前端用 task_id 兜底）。 */
-  task_name?: string | null;
+  /** 告警截图的 MinIO 对象 key，需拼接 endpoint+bucket 展示。 */
+  screenshot_object?: string | null;
 }

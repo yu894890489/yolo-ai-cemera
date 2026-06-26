@@ -2,44 +2,62 @@ import { describe, it, expect, vi } from 'vitest';
 import { normalizeAlarm, AlarmSocket, type AlarmSocketLike } from './alarm-socket';
 
 describe('normalizeAlarm', () => {
-  it('maps the M0 saver payload shape', () => {
+  it('maps the SaverWorker ws:alarm payload shape', () => {
     const raw = {
       alarm_id: 'a1',
+      event_id: 'e1',
       task_id: 't1',
-      rule_id: 'r1',
+      rule_id: 'demo',
       class: 'person',
       score: 0.82,
+      mode: 'small_only',
+      vlm_status: 'disabled',
       ts_ms: 1719300000000,
-      object_name: '2026/06/26/a1.jpg',
+      screenshot_object: '2026/06/26/a1.jpg',
     };
     const a = normalizeAlarm(raw);
     expect(a).not.toBeNull();
     expect(a!.alarm_id).toBe('a1');
+    expect(a!.event_id).toBe('e1');
     expect(a!.task_id).toBe('t1');
     expect(a!.class).toBe('person');
     expect(a!.score).toBe(0.82);
-    expect(a!.object_name).toBe('2026/06/26/a1.jpg');
+    expect(a!.mode).toBe('small_only');
+    expect(a!.vlm_status).toBe('disabled');
+    expect(a!.screenshot_object).toBe('2026/06/26/a1.jpg');
   });
 
-  it('coerces stringified score/ts_ms numbers (Redis fields arrive as strings)', () => {
-    const a = normalizeAlarm({ alarm_id: 'a2', task_id: 't1', score: '0.5', ts_ms: '1719300000000' });
+  it('coerces stringified score/ts_ms/vlm_confidence numbers (Redis fields arrive as strings)', () => {
+    const a = normalizeAlarm({
+      alarm_id: 'a2',
+      task_id: 't1',
+      score: '0.5',
+      ts_ms: '1719300000000',
+      vlm_confidence: '0.9',
+    });
     expect(a!.score).toBe(0.5);
     expect(a!.ts_ms).toBe(1719300000000);
+    expect(a!.vlm_confidence).toBe(0.9);
   });
 
-  it('keeps BE-M1-B forward fields (vlm_reason / vlm_confidence / screenshot_url / task_name)', () => {
+  it('keeps VLM judgment fields when vlm_status is ok', () => {
     const a = normalizeAlarm({
       alarm_id: 'a3',
       task_id: 't1',
+      vlm_status: 'ok',
       vlm_reason: '检测到未授权人员闯入',
       vlm_confidence: 0.93,
-      screenshot_url: 'https://minio/alarms/a3.jpg',
-      task_name: '东门入侵监控',
+      screenshot_object: '2026/06/26/a3.jpg',
     });
+    expect(a!.vlm_status).toBe('ok');
     expect(a!.vlm_reason).toBe('检测到未授权人员闯入');
     expect(a!.vlm_confidence).toBe(0.93);
-    expect(a!.screenshot_url).toBe('https://minio/alarms/a3.jpg');
-    expect(a!.task_name).toBe('东门入侵监控');
+    expect(a!.screenshot_object).toBe('2026/06/26/a3.jpg');
+  });
+
+  it('coerces an unknown vlm_status to empty string', () => {
+    expect(normalizeAlarm({ alarm_id: 'a4', task_id: 't1', vlm_status: 'weird' })!.vlm_status).toBe('');
+    expect(normalizeAlarm({ alarm_id: 'a5', task_id: 't1' })!.vlm_status).toBe('');
   });
 
   it('returns null for malformed payloads without alarm_id', () => {

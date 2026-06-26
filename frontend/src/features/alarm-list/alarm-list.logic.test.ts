@@ -4,16 +4,17 @@ import type { AlarmEvent } from '@/api/types';
 
 const base: AlarmEvent = {
   alarm_id: 'a1',
+  event_id: 'e1',
   task_id: 't1',
-  rule_id: 'r1',
+  rule_id: 'demo',
   class: 'person',
   score: 0.81,
   ts_ms: 1719300000000,
-  object_name: '2026/06/26/a1.jpg',
-  screenshot_url: null,
+  mode: 'small_only',
+  vlm_status: 'disabled',
   vlm_reason: null,
   vlm_confidence: null,
-  task_name: null,
+  screenshot_object: '2026/06/26/a1.jpg',
 };
 
 describe('formatTs', () => {
@@ -27,33 +28,42 @@ describe('formatTs', () => {
 });
 
 describe('toAlarmRow', () => {
-  it('uses VLM reason and confidence when present', () => {
-    const row = toAlarmRow({ ...base, vlm_reason: '有人闯入', vlm_confidence: 0.95 });
+  it('uses VLM reason and confidence when vlm_status is ok', () => {
+    const row = toAlarmRow({
+      ...base,
+      vlm_status: 'ok',
+      vlm_reason: '有人闯入',
+      vlm_confidence: 0.95,
+    });
     expect(row.reason).toBe('有人闯入');
     expect(row.confidence).toBe('0.95');
   });
 
-  it('falls back to YOLO score when vlm_confidence is missing', () => {
-    const row = toAlarmRow(base);
-    expect(row.confidence).toBe('0.81');
+  it('uses YOLO score for confidence when vlm_status is not ok', () => {
+    expect(toAlarmRow(base).confidence).toBe('0.81');
   });
 
-  it('falls back to task_id when task_name is missing', () => {
+  it('shows a status label as reason when VLM did not judge', () => {
+    expect(toAlarmRow({ ...base, vlm_status: 'disabled' }).reason).toBe('未启用 VLM');
+    expect(toAlarmRow({ ...base, vlm_status: 'failed' }).reason).toBe('VLM 调用失败');
+    expect(toAlarmRow({ ...base, vlm_status: 'skipped' }).reason).toBe('VLM 已跳过（降级）');
+  });
+
+  it('uses task_id as the task name (no task_name field in payload)', () => {
     expect(toAlarmRow(base).taskName).toBe('t1');
-    expect(toAlarmRow({ ...base, task_name: '东门监控' }).taskName).toBe('东门监控');
   });
 
-  it('prefers an explicit screenshot_url over object_name', () => {
-    const row = toAlarmRow({ ...base, screenshot_url: 'https://x/a.jpg' });
-    expect(row.screenshotUrl).toBe('https://x/a.jpg');
-  });
-
-  it('resolves object_name against the MinIO base when no direct url', () => {
+  it('resolves screenshot_object against the MinIO base + bucket', () => {
     const row = toAlarmRow(base, { minioBase: 'http://192.168.10.83:19000', bucket: 'alarms' });
     expect(row.screenshotUrl).toBe('http://192.168.10.83:19000/alarms/2026/06/26/a1.jpg');
   });
 
-  it('yields null screenshot when neither url nor minio base available', () => {
+  it('defaults the bucket to alarms when not provided', () => {
+    const row = toAlarmRow(base, { minioBase: 'http://192.168.10.83:19000' });
+    expect(row.screenshotUrl).toBe('http://192.168.10.83:19000/alarms/2026/06/26/a1.jpg');
+  });
+
+  it('yields null screenshot when no minio base available', () => {
     expect(toAlarmRow(base).screenshotUrl).toBeNull();
   });
 
