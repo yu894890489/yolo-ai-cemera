@@ -24,11 +24,12 @@ from app.common.config import get_config
 from app.common.signals import install_sighup
 from app.common.streams import make_client
 
+from app.api.alarms import make_alarms_blueprint
 from app.api.sources import make_sources_blueprint
 from app.api.tasks import RedisConfigPublisher, make_tasks_blueprint
 from app.api.repository import (
-    InMemorySourceRepo, InMemoryTaskRepo,
-    MySQLSourceRepo, MySQLTaskRepo,
+    InMemoryAlarmRepo, InMemorySourceRepo, InMemoryTaskRepo,
+    MySQLAlarmRepo, MySQLSourceRepo, MySQLTaskRepo,
 )
 
 from app.common.vlm import VLMRuntimeState
@@ -66,14 +67,19 @@ def create_app() -> Flask:
         }
         source_repo = MySQLSourceRepo(conn_params)
         task_repo = MySQLTaskRepo(conn_params)
+        alarm_repo = MySQLAlarmRepo(conn_params)
     else:
         source_repo = InMemorySourceRepo()
         task_repo = InMemoryTaskRepo()
+        alarm_repo = InMemoryAlarmRepo()
     config_publisher = RedisConfigPublisher(redis_client)
     app.register_blueprint(make_sources_blueprint(source_repo), url_prefix="/api")
     app.register_blueprint(
         make_tasks_blueprint(task_repo, source_repo, config_publisher=config_publisher),
         url_prefix="/api",
+    )
+    app.register_blueprint(
+        make_alarms_blueprint(alarm_repo, redis_client=redis_client), url_prefix="/api"
     )
     _clients: set = set()
     _clients_lock = threading.Lock()

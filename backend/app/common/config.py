@@ -79,6 +79,7 @@ class TaskConfig:
     roi: list[int] | None = None
     prompt: str = ""
     vlm_enabled: bool = False
+    classes: list[str] | None = None
 
 
 @dataclass
@@ -88,6 +89,7 @@ class VLMConfig:
     disable_thinking: bool = False
     max_retries: int = 2
     backoff_base_s: float = 0.2
+    dedup_window_s: int = 3
 
 
 @dataclass
@@ -150,6 +152,14 @@ def _parse_roi(raw: Any) -> list[int]:
     return roi
 
 
+def _parse_classes(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        vals = [str(v).strip() for v in raw]
+    else:
+        vals = [part.strip() for part in str(raw).split(",")]
+    return [v for v in vals if v]
+
+
 def _overlay_keys(before: AppConfig, after: AppConfig) -> list[str]:
     changed: list[str] = []
     if before.task != after.task:
@@ -170,6 +180,8 @@ def apply_overlay(cfg: AppConfig, overlay: dict[str, Any]) -> AppConfig:
             cfg.task.prompt = str(raw)
         elif key == "task.vlm_enabled":
             cfg.task.vlm_enabled = _parse_bool(raw)
+        elif key == "task.classes":
+            cfg.task.classes = _parse_classes(raw)
         elif key == "vlm.queue_high_watermark":
             cfg.vlm.queue_high_watermark = int(raw)
         elif key == "vlm.queue_timeout_ms":
@@ -180,6 +192,8 @@ def apply_overlay(cfg: AppConfig, overlay: dict[str, Any]) -> AppConfig:
             cfg.vlm.max_retries = int(raw)
         elif key == "vlm.backoff_base_s":
             cfg.vlm.backoff_base_s = float(raw)
+        elif key == "vlm.dedup_window_s":
+            cfg.vlm.dedup_window_s = int(raw)
     return cfg
 
 

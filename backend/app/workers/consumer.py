@@ -27,16 +27,85 @@ from typing import Any
 import redis
 
 from app.common.config import fetch_vlm_endpoints
+from app.common.dedup import event_id as make_event_id
+from app.common.imaging import crop_jpeg_b64
 from app.common.streams import ack, ensure_group, make_client, pending_count, read_group
-from app.common.vlm import VLMClient, VLMRuntimeState
+from app.common.vlm import VLMClient, VLMRequestError, VLMRuntimeState, interpret_judgment
 from app.workers.base import WorkerBase
 
 logger = logging.getLogger(__name__)
 
 
+def _bbox_overlaps_roi(bbox: list[float], roi: list[int]) -> bool:
+    """True if ``bbox`` [x1,y1,x2,y2] intersects ``roi``. Missing bbox passes."""
+    if len(bbox) != 4 or len(roi) != 4:
+        return True
+    bx1, by1, bx2, by2 = bbox
+    rx1, ry1, rx2, ry2 = roi
+    return not (bx2 < rx1 or bx1 > rx2 or by2 < ry1 or by1 > ry2)
+
+
+def _resolve_ts_ms(fields: dict[str, str], entry_id: str) -> int:
+    """Resolve the frame timestamp used for the dedup window.
+
+    ``event_id`` is derived from this value, so the fallback must be stable
+    across re-delivery — a wall-clock fallback would shift a replayed frame
+    into a different window and duplicate the alarm. The Redis stream entry-id
+    millisecond prefix (e.g. ``1700000000000-3``) is redelivered unchanged, so
+    it is the deterministic fallback when the producer didn't stamp ``ts_ms``.
+    """
+    try:
+        ts = int(fields.get("ts_ms") or 0)
+    except (TypeError, ValueError):
+        ts = 0
+    if ts > 0:
+        return ts
+    try:
+        return int(str(entry_id).split("-", 1)[0])
+    except (TypeError, ValueError):
+        return 0
+
+
 class _StubDetector:
     def detect(self, frame_b64: str) -> list[dict[str, Any]]:  # noqa: ARG002
         return [{"class": "person", "score": 0.9, "bbox": [0, 0, 10, 10]}]
+
+
+class _YoloDetector:
+    """Wraps an ultralytics model so it exposes the same ``detect`` contract.
+
+    Decodes the base64 JPEG once, runs inference, and returns normalised
+    detection dicts (``class`` / ``score`` / ``bbox`` = [x1,y1,x2,y2]).
+    """
+
+    def __init__(self, model, device: str) -> None:
+        self._model = model
+        self._device = device
+
+    def detect(self, frame_b64: str) -> list[dict[str, Any]]:
+        from app.common.imaging import decode_jpeg_b64
+
+        img = decode_jpeg_b64(frame_b64)
+        if img is None:
+            return []
+        results = self._model.predict(img, device=self._device, verbose=False)
+        out: list[dict[str, Any]] = []
+        names = getattr(self._model, "names", {})
+        for res in results:
+            boxes = getattr(res, "boxes", None)
+            if boxes is None:
+                continue
+            for box in boxes:
+                cls_idx = int(box.cls[0])
+                out.append(
+                    {
+                        "class": names.get(cls_idx, str(cls_idx)) if isinstance(names, dict) else str(cls_idx),
+                        "score": float(box.conf[0]),
+                        "bbox": [float(v) for v in box.xyxy[0].tolist()],
+                    }
+                )
+        return out
+
 
 
 def _load_detector(model_path: str, device: str):
@@ -48,7 +117,7 @@ def _load_detector(model_path: str, device: str):
     try:
         model = YOLO(model_path)
         logger.info("loaded YOLO model=%s device=%s", model_path, device)
-        return model
+        return _YoloDetector(model, device)
     except Exception:
         logger.exception("YOLO load failed; falling back to stub")
         return _StubDetector()
@@ -121,29 +190,113 @@ class ConsumerWorker(WorkerBase):
             dt_ms = (time.perf_counter() - t0) * 1000.0
             self.metrics.yolo_latency_ms.observe(dt_ms)
 
-    def _evaluate_rules(
+    def _filter_detections(self, detections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Apply confidence threshold, target-class filter, and ROI gate."""
+        conf = self.cfg.task.confidence
+        classes = self.cfg.task.classes
+        roi = self.cfg.task.roi
+        out: list[dict[str, Any]] = []
+        for det in detections:
+            if float(det.get("score", 0.0)) < conf:
+                continue
+            cls = det.get("class", "unknown")
+            if classes and cls not in classes:
+                continue
+            bbox = [float(v) for v in det.get("bbox", [])]
+            if roi and not _bbox_overlaps_roi(bbox, roi):
+                continue
+            out.append(det)
+        return out
+
+    def _build_alarm(
         self,
         task_id: str,
-        detections: list[dict[str, Any]],
+        det: dict[str, Any],
         *,
-        mode: str = "default",
+        mode: str,
+        crop_b64: str,
+        ts_ms: int,
+        vlm_status: str,
+        judgment: dict[str, Any] | None = None,
         vlm_error: str | None = None,
-    ) -> list[dict[str, Any]]:
-        alarms = []
-        for det in detections:
-            alarm: dict[str, Any] = {
-                "task_id": task_id,
-                "rule_id": "demo",
-                "class": det.get("class", "unknown"),
-                "score": float(det.get("score", 0.0)),
-                "bbox": ",".join(str(v) for v in det.get("bbox", [])),
-                "ts_ms": str(int(time.time() * 1000)),
-                "mode": mode,
-            }
-            if vlm_error:
-                alarm["vlm_status"] = "skipped"
-                alarm["vlm_error"] = vlm_error
-            alarms.append(alarm)
+    ) -> dict[str, str]:
+        roi_str = ",".join(str(v) for v in self.cfg.task.roi) if self.cfg.task.roi else ""
+        cls = str(det.get("class", "unknown"))
+        eid = make_event_id(
+            task_id, roi_str, cls, ts_ms=ts_ms, window_s=self.cfg.vlm.dedup_window_s
+        )
+        alarm: dict[str, str] = {
+            "task_id": task_id,
+            "rule_id": "demo",
+            "class": cls,
+            "score": str(float(det.get("score", 0.0))),
+            "bbox": ",".join(str(v) for v in det.get("bbox", [])),
+            "roi": roi_str,
+            "ts_ms": str(ts_ms),
+            "mode": mode,
+            "event_id": eid,
+            "crop_jpeg_b64": crop_b64 or "",
+            "vlm_status": vlm_status,
+            "vlm_reason": str((judgment or {}).get("reason", "")),
+            "vlm_confidence": str((judgment or {}).get("confidence", "")),
+            "vlm_summary": str((judgment or {}).get("summary", "")),
+        }
+        if vlm_error:
+            alarm["vlm_error"] = vlm_error
+        return alarm
+
+    def _process_frame(
+        self, frame_stream: str, task_id: str, fields: dict[str, str], entry_id: str
+    ) -> list[dict[str, str]]:
+        frame_b64 = fields.get("frame_jpeg_b64", "")
+        ts_ms = _resolve_ts_ms(fields, entry_id)
+
+        hits = self._filter_detections(self._infer(frame_b64))
+        if not hits:
+            return []
+
+        mode, vlm_error = self._vlm_guard(frame_stream)
+        alarms: list[dict[str, str]] = []
+        for det in hits:
+            bbox = [float(v) for v in det.get("bbox", [])]
+            crop_b64 = (crop_jpeg_b64(frame_b64, bbox) if bbox else None) or ""
+
+            if mode == "vlm" and self.vlm_client is not None:
+                try:
+                    raw = self.vlm_client.analyze(
+                        crop_b64 or frame_b64, prompt=self.cfg.task.prompt, crop={"bbox": bbox}
+                    )
+                except VLMRequestError as exc:
+                    alarms.append(
+                        self._build_alarm(
+                            task_id, det, mode="small_only", crop_b64=crop_b64,
+                            ts_ms=ts_ms, vlm_status="failed", vlm_error=str(exc),
+                        )
+                    )
+                    continue
+                judgment = interpret_judgment(raw)
+                if not judgment["is_alarm"]:
+                    continue
+                alarms.append(
+                    self._build_alarm(
+                        task_id, det, mode="vlm", crop_b64=crop_b64,
+                        ts_ms=ts_ms, vlm_status="ok", judgment=judgment,
+                    )
+                )
+            elif mode == "small_only":
+                alarms.append(
+                    self._build_alarm(
+                        task_id, det, mode="small_only", crop_b64=crop_b64,
+                        ts_ms=ts_ms, vlm_status="skipped", vlm_error=vlm_error,
+                    )
+                )
+            else:
+                alarms.append(
+                    self._build_alarm(
+                        task_id, det, mode="default", crop_b64=crop_b64,
+                        ts_ms=ts_ms, vlm_status="disabled",
+                    )
+                )
         return alarms
 
     def _vlm_guard(self, frame_stream: str) -> tuple[str, str | None]:
@@ -188,11 +341,8 @@ class ConsumerWorker(WorkerBase):
                 task_id = fields.get("task_id", "unknown")
                 self.metrics.frame_in_total.labels(task_id=task_id).inc()
                 try:
-                    detections = self._infer(fields.get("frame_jpeg_b64", ""))
-                    mode, vlm_error = self._vlm_guard(frame_stream)
-                    alarms = self._evaluate_rules(task_id, detections, mode=mode, vlm_error=vlm_error)
+                    alarms = self._process_frame(frame_stream, task_id, fields, entry_id)
                     for alarm in alarms:
-                        alarm["frame_jpeg_b64"] = fields.get("frame_jpeg_b64", "")
                         self.client.xadd(alarm_stream, alarm)
                         self.metrics.alarm_emit_total.labels(rule_id=alarm["rule_id"]).inc()
                 except Exception:

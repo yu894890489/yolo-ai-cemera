@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 
 from typing import Any
 
-from app.api.models import Source, Task, _ts
+from app.api.models import Alarm, Source, Task, _ts
 
 
 class SourceRepo(ABC):
@@ -241,3 +241,108 @@ class MySQLTaskRepo(TaskRepo):
             if cur.rowcount == 0:
                 return None
             return task
+
+
+class AlarmRepo(ABC):
+    @abstractmethod
+    def create(self, alarm: Alarm) -> Alarm | None:
+        """Insert an alarm. Return None when ``event_id`` already exists."""
+
+    @abstractmethod
+    def get(self, alarm_id: str) -> Alarm | None: ...
+
+    @abstractmethod
+    def list(self, limit: int = 50) -> list[Alarm]: ...
+
+
+class InMemoryAlarmRepo(AlarmRepo):
+    def __init__(self) -> None:
+        self._store: dict[str, Alarm] = {}
+        self._seen_events: set[str] = set()
+
+    def create(self, alarm: Alarm) -> Alarm | None:
+        if alarm.event_id in self._seen_events:
+            return None
+        self._seen_events.add(alarm.event_id)
+        if not alarm.id:
+            alarm.id = uuid.uuid4().hex
+        alarm.created_at = _ts()
+        self._store[alarm.id] = alarm
+        return alarm
+
+    def get(self, alarm_id: str) -> Alarm | None:
+        return self._store.get(alarm_id)
+
+    def list(self, limit: int = 50) -> list[Alarm]:
+        ordered = sorted(self._store.values(), key=lambda a: a.ts_ms, reverse=True)
+        return ordered[:limit]
+
+
+class MySQLAlarmRepo(AlarmRepo):
+    """Real MySQL implementation. ``event_id`` is UNIQUE so a duplicate insert
+    raises IntegrityError, which we treat as "already recorded" -> None."""
+
+    def __init__(self, connection_params: dict[str, Any]) -> None:
+        self._params = connection_params
+        self._conn = None
+
+    def _connect(self):
+        if self._conn is None:
+            import pymysql
+
+            self._conn = pymysql.connect(**self._params)
+        else:
+            self._conn.ping(reconnect=True)
+        return self._conn
+
+    @staticmethod
+    def _from_row(row) -> Alarm:
+        return Alarm(
+            event_id=row[1], task_id=row[2], rule_id=row[3], class_name=row[4],
+            score=float(row[5]), bbox=row[6], roi=row[7], mode=row[8],
+            vlm_status=row[9], vlm_reason=row[10], vlm_confidence=float(row[11]),
+            screenshot_object=row[12], ts_ms=int(row[13]), id=row[0], created_at=row[14],
+        )
+
+    def create(self, alarm: Alarm) -> Alarm | None:
+        import pymysql
+
+        conn = self._connect()
+        if not alarm.id:
+            alarm.id = uuid.uuid4().hex
+        alarm.created_at = _ts()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO alarms (id, event_id, task_id, rule_id, class, score, bbox, roi, "
+                    "mode, vlm_status, vlm_reason, vlm_confidence, screenshot_object, ts_ms, created_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (alarm.id, alarm.event_id, alarm.task_id, alarm.rule_id, alarm.class_name,
+                     alarm.score, alarm.bbox, alarm.roi, alarm.mode, alarm.vlm_status,
+                     alarm.vlm_reason, alarm.vlm_confidence, alarm.screenshot_object,
+                     alarm.ts_ms, alarm.created_at),
+                )
+                conn.commit()
+        except pymysql.err.IntegrityError:
+            conn.rollback()
+            return None
+        return alarm
+
+    def get(self, alarm_id: str) -> Alarm | None:
+        conn = self._connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, event_id, task_id, rule_id, class, score, bbox, roi, mode, "
+                "vlm_status, vlm_reason, vlm_confidence, screenshot_object, ts_ms, created_at "
+                "FROM alarms WHERE id=%s", (alarm_id,))
+            row = cur.fetchone()
+            return self._from_row(row) if row else None
+
+    def list(self, limit: int = 50) -> list[Alarm]:
+        conn = self._connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, event_id, task_id, rule_id, class, score, bbox, roi, mode, "
+                "vlm_status, vlm_reason, vlm_confidence, screenshot_object, ts_ms, created_at "
+                "FROM alarms ORDER BY ts_ms DESC LIMIT %s", (int(limit),))
+            return [self._from_row(row) for row in cur.fetchall()]

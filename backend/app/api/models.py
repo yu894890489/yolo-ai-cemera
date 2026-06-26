@@ -35,3 +35,22 @@ class Task:
     error_message: str = ""
     created_at: str = field(default_factory=_ts)
     updated_at: str = field(default_factory=_ts)
+
+
+@dataclass
+class Alarm:
+    event_id: str = ""
+    task_id: str = ""
+    rule_id: str = "demo"
+    class_name: str = ""
+    score: float = 0.0
+    bbox: str = ""
+    roi: str = ""
+    mode: str = "default"
+    vlm_status: str = ""
+    vlm_reason: str = ""
+    vlm_confidence: float = 0.0
+    screenshot_object: str = ""
+    ts_ms: int = 0
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    created_at: str = field(default_factory=_ts)
