@@ -26,7 +26,9 @@ from typing import Any
 
 import redis
 
+from app.common.config import fetch_vlm_endpoints
 from app.common.streams import ack, ensure_group, make_client, pending_count, read_group
+from app.common.vlm import VLMClient, VLMRuntimeState
 from app.workers.base import WorkerBase
 
 logger = logging.getLogger(__name__)
@@ -65,14 +67,31 @@ class ConsumerWorker(WorkerBase):
         self._consumer_name = f"{self.name}-{socket.gethostname()}"
         self._known_streams: set[str] = set()
         self._last_scan: float = 0.0
+        self.vlm_state = VLMRuntimeState()
+        self.vlm_client: VLMClient | None = None
 
     def setup(self) -> None:
         self.client = make_client(self.cfg)
         self.detector = _load_detector(self.cfg.yolo.model, self.cfg.yolo.device)
+        self._build_vlm()
 
     def on_reload(self) -> None:
         new_model = self.cfg.yolo.model
         self.detector = _load_detector(new_model, self.cfg.yolo.device)
+        self._build_vlm()
+
+    def _build_vlm(self) -> None:
+        ep_list = fetch_vlm_endpoints(self.cfg)
+        if not ep_list and self.cfg.task.vlm_enabled:
+            logger.info("VLM enabled but no endpoints; disabling VLM")
+        self.vlm_state = VLMRuntimeState()
+        self.vlm_client = VLMClient(
+            endpoints=ep_list,
+            state=self.vlm_state,
+            max_retries=self.cfg.vlm.max_retries,
+            backoff_base_s=self.cfg.vlm.backoff_base_s,
+            disable_thinking=self.cfg.vlm.disable_thinking,
+        )
 
     def _refresh_streams(self) -> None:
         assert self.client is not None
@@ -102,20 +121,42 @@ class ConsumerWorker(WorkerBase):
             dt_ms = (time.perf_counter() - t0) * 1000.0
             self.metrics.yolo_latency_ms.observe(dt_ms)
 
-    def _evaluate_rules(self, task_id: str, detections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _evaluate_rules(
+        self,
+        task_id: str,
+        detections: list[dict[str, Any]],
+        *,
+        mode: str = "default",
+        vlm_error: str | None = None,
+    ) -> list[dict[str, Any]]:
         alarms = []
         for det in detections:
-            alarms.append(
-                {
-                    "task_id": task_id,
-                    "rule_id": "demo",
-                    "class": det.get("class", "unknown"),
-                    "score": float(det.get("score", 0.0)),
-                    "bbox": ",".join(str(v) for v in det.get("bbox", [])),
-                    "ts_ms": str(int(time.time() * 1000)),
-                }
-            )
+            alarm: dict[str, Any] = {
+                "task_id": task_id,
+                "rule_id": "demo",
+                "class": det.get("class", "unknown"),
+                "score": float(det.get("score", 0.0)),
+                "bbox": ",".join(str(v) for v in det.get("bbox", [])),
+                "ts_ms": str(int(time.time() * 1000)),
+                "mode": mode,
+            }
+            if vlm_error:
+                alarm["vlm_status"] = "skipped"
+                alarm["vlm_error"] = vlm_error
+            alarms.append(alarm)
         return alarms
+
+    def _vlm_guard(self, frame_stream: str) -> tuple[str, str | None]:
+        if not self.cfg.task.vlm_enabled:
+            return "default", None
+        queue_lag = pending_count(self.client, frame_stream, self.cfg.streams.group_consumer)  # type: ignore[arg-type]
+        if queue_lag >= self.cfg.vlm.queue_high_watermark:
+            self.vlm_state.degraded_mode = "small_only"
+            self.vlm_state.last_failure_reason = "queue_high_watermark"
+            return "small_only", "queue_high_watermark"
+        if self.vlm_client is None:
+            return "small_only", "vlm_client_missing"
+        return "vlm", None
 
     def step(self) -> None:
         assert self.client is not None
@@ -148,7 +189,8 @@ class ConsumerWorker(WorkerBase):
                 self.metrics.frame_in_total.labels(task_id=task_id).inc()
                 try:
                     detections = self._infer(fields.get("frame_jpeg_b64", ""))
-                    alarms = self._evaluate_rules(task_id, detections)
+                    mode, vlm_error = self._vlm_guard(frame_stream)
+                    alarms = self._evaluate_rules(task_id, detections, mode=mode, vlm_error=vlm_error)
                     for alarm in alarms:
                         alarm["frame_jpeg_b64"] = fields.get("frame_jpeg_b64", "")
                         self.client.xadd(alarm_stream, alarm)
