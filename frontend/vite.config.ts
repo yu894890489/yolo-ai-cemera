@@ -30,6 +30,15 @@ export default defineConfig({
         'components-demo': fileURLToPath(
           new URL('./src/entries/components-demo.ts', import.meta.url),
         ),
+        'task-create': fileURLToPath(
+          new URL('./src/entries/task-create.ts', import.meta.url),
+        ),
+        'monitor-preview': fileURLToPath(
+          new URL('./src/entries/monitor-preview.ts', import.meta.url),
+        ),
+        'alarm-list': fileURLToPath(
+          new URL('./src/entries/alarm-list.ts', import.meta.url),
+        ),
       },
       output: {
         entryFileNames: 'assets/[name].[hash].js',

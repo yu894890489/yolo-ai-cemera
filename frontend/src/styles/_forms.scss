@@ -1,0 +1,71 @@
+// 共享表单 / 卡片 / 输入控件样式，供 M1 各业务页复用。
+@use 'tokens' as t;
+
+.mc-input {
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-size: 14px;
+  line-height: 1.5;
+  color: t.$color-neutral-900;
+  background: t.$color-surface;
+  border: 1px solid t.$color-neutral-300;
+  border-radius: t.$radius-md;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-primary;
+    box-shadow: 0 0 0 3px rgb(47 111 237 / 15%);
+  }
+}
+
+.mc-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.mc-card {
+  background: t.$color-surface;
+  border: 1px solid t.$color-neutral-300;
+  border-radius: t.$radius-lg;
+  box-shadow: t.$shadow-sm;
+  margin-bottom: t.$space-lg;
+  overflow: hidden;
+
+  &__title {
+    margin: 0;
+    padding: t.$space-md t.$space-lg;
+    font-size: 15px;
+    font-weight: 600;
+    border-bottom: 1px solid t.$color-neutral-100;
+    background: t.$color-neutral-100;
+  }
+
+  &__body {
+    padding: t.$space-lg;
+  }
+}
+
+.mc-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  margin-right: t.$space-lg;
+  cursor: pointer;
+}
+
+.mc-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.mc-range {
+  flex: 1;
+}
+
+.mc-range__value {
+  min-width: 44px;
+  font-family: 'JetBrains Mono', monospace;
+  color: t.$color-primary;
+}

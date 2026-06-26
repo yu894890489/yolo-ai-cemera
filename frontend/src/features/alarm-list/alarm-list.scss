@@ -1,0 +1,120 @@
+@use '@styles/forms';
+@use '@styles/tokens' as t;
+
+.mc-alarm {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: t.$space-lg;
+
+  &__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: t.$space-md;
+    margin-top: t.$space-lg;
+    margin-bottom: t.$space-md;
+  }
+
+  &__count {
+    font-size: 13px;
+    color: t.$color-neutral-500;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-md;
+  }
+
+  &__skeletons {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-md;
+  }
+
+  &__skeleton-row {
+    display: flex;
+    gap: t.$space-md;
+    align-items: flex-start;
+    padding: t.$space-md;
+    background: t.$color-surface;
+    border: 1px solid t.$color-neutral-300;
+    border-radius: t.$radius-lg;
+  }
+
+  &__card {
+    display: flex;
+    gap: t.$space-md;
+    padding: t.$space-md;
+    background: t.$color-surface;
+    border: 1px solid t.$color-neutral-300;
+    border-radius: t.$radius-lg;
+    box-shadow: t.$shadow-sm;
+  }
+
+  &__thumb {
+    flex: 0 0 128px;
+    width: 128px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: t.$color-neutral-500;
+    background: t.$color-neutral-100;
+    border-radius: t.$radius-md;
+    overflow: hidden;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    &.is-empty,
+    &.is-broken {
+      color: t.$color-neutral-500;
+    }
+  }
+
+  &__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+
+  &__top {
+    display: flex;
+    align-items: center;
+    gap: t.$space-md;
+  }
+
+  &__time {
+    font-size: 12px;
+    color: t.$color-neutral-500;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  &__reason {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: t.$color-neutral-900;
+    word-break: break-word;
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: t.$space-lg;
+    margin-top: t.$space-xs;
+    font-size: 13px;
+    color: t.$color-neutral-700;
+  }
+
+  &__meta-key {
+    color: t.$color-neutral-500;
+  }
+}

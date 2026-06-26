@@ -1,0 +1,72 @@
+@use '@styles/forms';
+@use '@styles/tokens' as t;
+
+.mc-monitor {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: t.$space-lg;
+
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    gap: t.$space-md;
+    margin-top: t.$space-lg;
+  }
+
+  &__select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__statusbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: t.$space-md;
+    min-height: 28px;
+    margin-top: t.$space-md;
+  }
+
+  &__meta {
+    font-size: 13px;
+    color: t.$color-neutral-700;
+  }
+
+  &__err {
+    font-size: 13px;
+    color: t.$color-danger;
+  }
+
+  &__stage {
+    position: relative;
+    margin-top: t.$space-md;
+    aspect-ratio: 16 / 9;
+    background: t.$color-neutral-900;
+    border-radius: t.$radius-lg;
+    overflow: hidden;
+  }
+
+  &__player {
+    position: absolute;
+    inset: 0;
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+  }
+
+  &__placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: t.$space-lg;
+    font-size: 14px;
+    color: t.$color-neutral-300;
+    text-align: center;
+  }
+}
