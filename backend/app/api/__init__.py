@@ -13,6 +13,7 @@ Kept tiny on purpose. Business API surface lands in M1+.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 from flask import Flask, Response, jsonify
@@ -22,7 +23,16 @@ from prometheus_client import CollectorRegistry, Gauge, generate_latest
 from app.common.config import get_config
 from app.common.signals import install_sighup
 from app.common.streams import make_client
+
+from app.api.sources import make_sources_blueprint
+from app.api.tasks import RedisConfigPublisher, make_tasks_blueprint
+from app.api.repository import (
+    InMemorySourceRepo, InMemoryTaskRepo,
+    MySQLSourceRepo, MySQLTaskRepo,
+)
+
 from app.common.vlm import VLMRuntimeState
+
 
 logger = logging.getLogger(__name__)
 _vlm_runtime_state = VLMRuntimeState()
@@ -46,6 +56,25 @@ def create_app() -> Flask:
     process_up.labels(worker="flask").set(1)
 
     redis_client = make_client(cfg)
+    if os.environ.get("API_REPO", "memory") == "mysql":
+        conn_params = {
+            "host": cfg.mysql.host,
+            "port": cfg.mysql.port,
+            "user": cfg.mysql.user,
+            "password": cfg.mysql.password,
+            "database": cfg.mysql.db,
+        }
+        source_repo = MySQLSourceRepo(conn_params)
+        task_repo = MySQLTaskRepo(conn_params)
+    else:
+        source_repo = InMemorySourceRepo()
+        task_repo = InMemoryTaskRepo()
+    config_publisher = RedisConfigPublisher(redis_client)
+    app.register_blueprint(make_sources_blueprint(source_repo), url_prefix="/api")
+    app.register_blueprint(
+        make_tasks_blueprint(task_repo, source_repo, config_publisher=config_publisher),
+        url_prefix="/api",
+    )
     _clients: set = set()
     _clients_lock = threading.Lock()
 

@@ -6,7 +6,7 @@ import pytest
 
 fakeredis = pytest.importorskip("fakeredis")
 
-from app.common import streams
+from app.common import streams  # noqa: E402
 
 
 @pytest.fixture
