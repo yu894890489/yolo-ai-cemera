@@ -1,0 +1,24 @@
+# BE-M1-D (YU-56): GPU/real-YOLO override — OPTIONAL.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Swaps the consumer to the CUDA + ultralytics image and reserves one NVIDIA GPU
+# (e.g. the host's RTX 2060). All other services stay on the CPU image. Requires
+# the NVIDIA Container Toolkit on the host. Without this override the consumer
+# runs the CPU stub detector (default).
+
+services:
+  consumer:
+    image: yolo-vlm-consumer-gpu:local
+    build:
+      context: ..
+      dockerfile: backend/docker/Dockerfile.gpu
+    environment:
+      YOLO_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

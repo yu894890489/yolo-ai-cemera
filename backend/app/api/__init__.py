@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from pathlib import Path
 
 from flask import Flask, Response, jsonify
 from flask_sock import Sock
@@ -27,10 +28,15 @@ from app.common.streams import make_client
 from app.api.alarms import make_alarms_blueprint
 from app.api.sources import make_sources_blueprint
 from app.api.tasks import RedisConfigPublisher, make_tasks_blueprint
+from app.api.web import make_web_blueprint
 from app.api.repository import (
     InMemoryAlarmRepo, InMemorySourceRepo, InMemoryTaskRepo,
     MySQLAlarmRepo, MySQLSourceRepo, MySQLTaskRepo,
 )
+
+# Frontend build output lives at app/static/frontend (Vite outDir); serve it at
+# /static/frontend to match the Vite `base`.
+_STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 
 from app.common.vlm import VLMRuntimeState
 
@@ -45,7 +51,11 @@ def get_vlm_runtime_state() -> VLMRuntimeState:
 
 def create_app() -> Flask:
     cfg = get_config()
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        static_folder=str(_STATIC_ROOT),
+        static_url_path="/static",
+    )
     app.config["SECRET_KEY"] = cfg.flask_secret_key
     sock = Sock(app)
 
@@ -81,6 +91,7 @@ def create_app() -> Flask:
     app.register_blueprint(
         make_alarms_blueprint(alarm_repo, redis_client=redis_client), url_prefix="/api"
     )
+    app.register_blueprint(make_web_blueprint(_STATIC_ROOT))
     _clients: set = set()
     _clients_lock = threading.Lock()
 

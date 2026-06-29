@@ -1,8 +1,25 @@
-# Backend container — used for all three workers + Flask main process.
-# Keep the image slim; CUDA/torch GPU base is reserved for M1 once we wire the
-# real YOLO inference path. For M0 the consumer falls back to the stub when
-# ultralytics is missing, which is fine for the skeleton.
+# Multi-stage backend image (BE-M1-D / YU-56).
+#
+# Build context is the REPO ROOT (see docker-compose.yml) so the frontend can be
+# built and its dist baked into the image — no separate `pnpm preview` needed.
+#
+#   stage 1 (frontend-build): node -> Vite build -> /build/app/static/frontend
+#   stage 2 (base):           python slim, CPU stub YOLO (default)
+#
+# The GPU/ultralytics consumer is a separate image (docker/Dockerfile.gpu),
+# opted into via docker-compose.gpu.yml. The CPU stub path stays the default.
 
+# ---------- stage 1: frontend ----------
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+RUN corepack enable
+COPY frontend/ ./frontend/
+WORKDIR /build/frontend
+RUN pnpm install --frozen-lockfile
+# Vite outDir resolves to /build/app/static/frontend (see frontend/vite.config.ts).
+RUN pnpm build
+
+# ---------- stage 2: python runtime ----------
 FROM python:3.11-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
@@ -16,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY backend/pyproject.toml ./
 RUN pip install --upgrade pip \
  && pip install \
       "flask>=3.0,<4.0" \
@@ -29,8 +46,12 @@ RUN pip install --upgrade pip \
       "opencv-python-headless>=4.9" \
       "numpy>=1.26"
 
-COPY app ./app
-COPY README.md ./
+COPY backend/app ./app
+COPY backend/sql ./sql
+COPY backend/README.md ./
 
-EXPOSE 8000 9101 9102 9103
+# Bake the built frontend into the image so Flask can serve it at /static/frontend.
+COPY --from=frontend-build /build/app/static/frontend ./app/static/frontend
+
+EXPOSE 8010 9101 9102 9103
 CMD ["python", "-m", "app.api"]

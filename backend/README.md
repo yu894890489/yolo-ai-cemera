@@ -96,23 +96,27 @@ Grafana dashboard 占位，M3 正式做面板。
 
 ## 启动
 
-部署主机参见父 issue `YU-33` metadata：`docker_host`。
+一键部署见 **[DEPLOY.md](DEPLOY.md)**（最简步骤：填 `VLM_API_KEY` + MinIO AK/SK → `docker compose up -d --build`）。
 
 ```bash
-cp .env.example .env   # 在部署主机上编辑真实凭据
+cp .env.example .env   # 只需填 VLM_API_KEY + MinIO AK/SK
 docker compose up -d --build
-docker compose ps
+docker compose ps      # migrate 为 exited(0)，其余 running/healthy
 ```
 
 验证：
 
 ```bash
+curl http://<host>:8010/healthz  # flask
 curl http://<host>:9101/metrics  # producer
 curl http://<host>:9102/metrics  # consumer
 curl http://<host>:9103/metrics  # saver
 ```
 
-杀任一 worker，Stream 数据不丢，重启后继续从最后 `XACK` 点消费。
+- Flask 默认 `8010`（避开被占用的 8000），同源托管前端页面（`/`、`/monitor`、`/alarms`），无需 `pnpm preview`。
+- `compose` 自带一次性 `migrate` 服务，在共享 MySQL 建表（`sources/tasks/alarms/vlm_endpoints`，见 `sql/`），应用待其完成后再起。
+- 默认 `API_REPO=mysql`，Flask 与 Saver 共享持久化；GPU/真实 YOLO 用 `docker-compose.gpu.yml` 叠加。
+- 杀任一 worker，Stream 数据不丢，重启后继续从最后 `XACK` 点消费。
 
 ## 跨端依赖
 

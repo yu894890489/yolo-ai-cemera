@@ -1,14 +1,35 @@
-# BE-M0-S3: skeleton compose for backend + Redis (with AOF).
+# BE-M1-D (YU-56): one-click full M1 stack.
 #
-# This file intentionally only declares the three workers + Flask + Redis.
-# Full shared environment (MinIO/MediaMTX/Chroma) is delivered by BE-M0-S5
-# (YU-39) and Compose-merged via `docker compose -f docker-compose.yml -f
-# ../be-m0-s5/docker-compose.yml up -d`.
+#   docker compose up -d --build
+#
+# Brings up: redis + a one-shot migrate job (creates sources/tasks/alarms/
+# vlm_endpoints in the shared MySQL) + Flask (API + frontend) + the three
+# workers. Defaults to API_REPO=mysql so Flask and Saver share durable storage
+# (otherwise /api/alarms can't read Saver's writes). Flask listens on 8010 to
+# avoid the occupied 8000.
+#
+# Shared infra (MySQL/MinIO/MediaMTX/Chroma at 192.168.10.83, YU-39) is external
+# and consumed via .env — this compose does NOT start it.
+#
+# GPU/real-YOLO consumer is opt-in:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+
+x-backend: &backend
+  image: yolo-vlm-backend:local
+  build:
+    # Context is the repo root so the frontend can be built into the image.
+    context: ..
+    dockerfile: backend/docker/Dockerfile
+  env_file: .env
+  environment:
+    # Durable storage by default — Flask + Saver must share MySQL.
+    API_REPO: ${API_REPO:-mysql}
+    FLASK_PORT: ${FLASK_PORT:-8010}
+  restart: unless-stopped
 
 services:
   redis:
     image: redis:7-alpine
-    # AOF on — required for Stream durability (re-deliver across restarts).
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis-data:/data
@@ -19,57 +40,62 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # One-shot: create the schema in the shared MySQL, then exit 0. Everything
+  # else waits for this to complete so the first request never hits a missing
+  # table. Idempotent (CREATE TABLE IF NOT EXISTS), safe to re-run.
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "app.db.init_db"]
+    restart: "no"
+
   flask:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    env_file: .env
+    <<: *backend
+    command: ["python", "-m", "app.api"]
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
-      - "${FLASK_PORT:-8000}:8000"
-    command: ["python", "-m", "app.api"]
-    restart: unless-stopped
+      - "${FLASK_PORT:-8010}:${FLASK_PORT:-8010}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${FLASK_PORT:-8010}/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
 
   producer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    env_file: .env
+    <<: *backend
+    command: ["python", "-m", "app.workers.producer"]
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${PRODUCER_METRICS_PORT:-9101}:9101"
-    command: ["python", "-m", "app.workers.producer"]
-    restart: unless-stopped
 
   consumer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    env_file: .env
+    <<: *backend
+    command: ["python", "-m", "app.workers.consumer"]
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${CONSUMER_METRICS_PORT:-9102}:9102"
-    command: ["python", "-m", "app.workers.consumer"]
-    restart: unless-stopped
 
   saver:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    env_file: .env
+    <<: *backend
+    command: ["python", "-m", "app.workers.saver"]
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "${SAVER_METRICS_PORT:-9103}:9103"
-    command: ["python", "-m", "app.workers.saver"]
-    restart: unless-stopped
 
 volumes:
   redis-data:

@@ -1,0 +1,13 @@
+# Build context is the repo root; keep images lean and builds reproducible.
+**/node_modules
+**/__pycache__
+**/*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.git/
+.idea/
+.vscode/
+**/.env
+**/dist/
+backend/app/static/frontend/
