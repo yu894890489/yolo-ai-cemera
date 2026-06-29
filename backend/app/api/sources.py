@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from app.api.auth import current_business_line
 from app.api.models import Source
 from app.api.repository import SourceRepo
 
@@ -63,33 +64,38 @@ def make_sources_blueprint(repo: SourceRepo) -> Blueprint:
         if err:
             return _error(err)
         assert source is not None
+        source.business_line = current_business_line()
         return jsonify(_to_json(repo.create(source))), 201
 
     @bp.get("/sources")
     def list_sources():
-        return jsonify([_to_json(source) for source in repo.list()])
+        return jsonify([_to_json(s) for s in repo.list(business_line=current_business_line())])
 
     @bp.get("/sources/<source_id>")
     def get_source(source_id: str):
-        source = repo.get(source_id)
+        source = repo.get(source_id, business_line=current_business_line())
         if source is None:
             return _error("source not found", 404)
         return jsonify(_to_json(source))
 
     @bp.put("/sources/<source_id>")
     def update_source(source_id: str):
-        existing = repo.get(source_id)
+        existing = repo.get(source_id, business_line=current_business_line())
         if existing is None:
             return _error("source not found", 404)
         source, err = _source_from_payload(request.get_json(silent=True) or {}, existing)
         if err:
             return _error(err)
         assert source is not None
-        return jsonify(_to_json(repo.update(source)))
+        source.business_line = existing.business_line
+        updated = repo.update(source, business_line=current_business_line())
+        if updated is None:
+            return _error("source not found", 404)
+        return jsonify(_to_json(updated))
 
     @bp.delete("/sources/<source_id>")
     def delete_source(source_id: str):
-        if not repo.delete(source_id):
+        if not repo.delete(source_id, business_line=current_business_line()):
             return _error("source not found", 404)
         return "", 204
 

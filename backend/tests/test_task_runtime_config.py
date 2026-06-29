@@ -168,7 +168,7 @@ def test_stop_publishes_runtime_stop(client, publisher, created_source):
 def test_redis_publisher_tracks_active_task_set():
     redis = FakeRedis()
     publisher = RedisConfigPublisher(redis)
-    task = type("Task", (), {"id": "task1", "algorithm_id": "small_crop", "roi": "", "prompt": "", "confidence": 0.5})()
+    task = type("Task", (), {"id": "task1", "algorithm_id": "small_crop", "roi": "", "prompt": "", "confidence": 0.5, "business_line": "phase1"})()
     source = type("Source", (), {"id": "src1", "name": "Cam 1", "address": "rtsp://x", "protocol": "rtsp"})()
 
     publisher.publish_started(task, source)

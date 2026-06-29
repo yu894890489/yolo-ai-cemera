@@ -115,6 +115,25 @@ class SaverWorker(WorkerBase):
         day = time.strftime("%Y/%m/%d", time.gmtime(ts_ms / 1000.0 if ts_ms else time.time()))
         return f"{day}/{event_id}.jpg"
 
+    def _resolve_business_line(self, task_id: str) -> str:
+        """Look up the owning task's business_line from Redis task config. Falls
+        back to the phase1 default when the config is absent (demo task or
+        pre-Stage1 producer that never published business_line)."""
+        from app.api.models import DEFAULT_BUSINESS_LINE
+
+        assert self.client is not None
+        if not task_id:
+            return DEFAULT_BUSINESS_LINE
+        raw = self.client.get(f"task:{task_id}")
+        if not raw:
+            return DEFAULT_BUSINESS_LINE
+        try:
+            cfg = json.loads(raw)
+        except (ValueError, TypeError):
+            return DEFAULT_BUSINESS_LINE
+        bl = cfg.get("business_line")
+        return bl or DEFAULT_BUSINESS_LINE
+
     def _persist_entry(self, fields: dict[str, Any]) -> dict[str, Any] | None:
         """Dedup + upload + persist a single alarm.
 
@@ -172,6 +191,7 @@ class SaverWorker(WorkerBase):
             vlm_confidence=vlm_conf,
             screenshot_object=object_key or "",
             ts_ms=ts_ms,
+            business_line=self._resolve_business_line(fields.get("task_id", "")),
         )
         # create() returns None on a durable-dedup hit (row already exists). We
         # still push in that case — the prior attempt may have crashed before

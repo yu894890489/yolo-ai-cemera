@@ -24,12 +24,17 @@ from app.db.sql_statements import split_sql_statements
 logger = logging.getLogger(__name__)
 
 # Order matters only loosely (no FKs), but keep a stable, readable sequence.
+# add_business_line.sql runs ALTERs against sources/tasks/alarms; on a fresh
+# install those statements raise duplicate-column/duplicate-key errors which
+# apply_migrations() tolerates and logs, so the file is a safe no-op there.
 MIGRATION_FILES = [
     "sources.sql",
     "tasks.sql",
     "alarms.sql",
     "vlm_endpoints.sql",
     "system_configs.sql",
+    "users.sql",
+    "add_business_line.sql",
 ]
 
 _SQL_DIR = Path(__file__).resolve().parent.parent.parent / "sql"
@@ -37,17 +42,40 @@ _SQL_DIR = Path(__file__).resolve().parent.parent.parent / "sql"
 
 def apply_migrations(conn: Any, migrations: dict[str, str]) -> int:
     """Execute every statement in ``migrations`` (name -> sql body). Returns the
-    number of statements run. Commits once at the end."""
+    number of statements run. Commits once at the end.
+
+    Tolerates MySQL 1060 (duplicate column) and 1061 (duplicate key name) so
+    the idempotent ALTER migrations in add_business_line.sql are a no-op on
+    fresh installs that already created the column via CREATE TABLE."""
     total = 0
     for name, body in migrations.items():
         statements = split_sql_statements(body)
         for stmt in statements:
-            with conn.cursor() as cur:
-                cur.execute(stmt)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(stmt)
+            except Exception as exc:
+                if _is_duplicate_ddl(exc):
+                    logger.info("migration %s: skipping duplicate DDL (%s)", name, exc)
+                    continue
+                raise
             total += 1
         logger.info("migration %s: %d statement(s)", name, len(statements))
     conn.commit()
     return total
+
+
+# MySQL error codes for idempotent ALTERs that should not break a fresh install
+# where CREATE TABLE already provided the column/index.
+_DUPLICATE_COLUMN_CODE = 1060
+_DUPLICATE_KEY_CODE = 1061
+
+
+def _is_duplicate_ddl(exc: Exception) -> bool:
+    code = getattr(exc, "args", None)
+    if code and isinstance(code, tuple) and code and isinstance(code[0], int):
+        return code[0] in (_DUPLICATE_COLUMN_CODE, _DUPLICATE_KEY_CODE)
+    return False
 
 
 def _load_migrations() -> dict[str, str]:

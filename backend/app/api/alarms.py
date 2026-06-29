@@ -17,6 +17,7 @@ from typing import Any
 
 from flask import Blueprint, Response, jsonify, request
 
+from app.api.auth import current_business_line
 from app.api.repository import AlarmRepo
 
 _WS_CHANNEL = "ws:alarm"
@@ -36,7 +37,9 @@ def make_alarms_blueprint(repo: AlarmRepo, redis_client=None) -> Blueprint:
         except ValueError:
             limit = 50
         limit = max(1, min(limit, 500))
-        return jsonify([asdict(a) for a in repo.list(limit=limit)])
+        return jsonify(
+            [asdict(a) for a in repo.list(limit=limit, business_line=current_business_line())]
+        )
 
     @bp.get("/alarms/stream")
     def stream_alarms():  # pragma: no cover - exercised in integration only

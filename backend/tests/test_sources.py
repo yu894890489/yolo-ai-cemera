@@ -138,16 +138,22 @@ class TestDeleteSource:
 class TestMySQLSourceRepo:
     def test_get_converts_enabled_to_boolean(self):
         repo = MySQLSourceRepo({})
-        repo._connect = lambda: _FakeConnection([("src1", "Cam 1", "rtsp", "rtsp://x", 1, "", "created", "updated")])
+        repo._connect = lambda: _FakeConnection(
+            [("src1", "Cam 1", "rtsp", "rtsp://x", 1, "", "phase1", "created", "updated")]
+        )
 
         source = repo.get("src1")
 
-        assert source == Source("src1", "Cam 1", "rtsp", "rtsp://x", True, "", "created", "updated")
+        assert source == Source(
+            "src1", "Cam 1", "rtsp", "rtsp://x", True, "", "phase1", "created", "updated"
+        )
         assert isinstance(source.enabled, bool)
 
     def test_list_converts_enabled_to_boolean(self):
         repo = MySQLSourceRepo({})
-        repo._connect = lambda: _FakeConnection([("src1", "Cam 1", "rtsp", "rtsp://x", 0, "", "created", "updated")])
+        repo._connect = lambda: _FakeConnection(
+            [("src1", "Cam 1", "rtsp", "rtsp://x", 0, "", "phase1", "created", "updated")]
+        )
 
         sources = repo.list()
 

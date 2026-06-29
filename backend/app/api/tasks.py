@@ -11,6 +11,7 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from app.api.auth import current_business_line
 from app.api.models import Source, Task
 from app.api.repository import SourceRepo, TaskRepo
 
@@ -104,6 +105,7 @@ def _config_value(task: Task, source: Source) -> str:
         "roi": task.roi,
         "prompt": task.prompt,
         "confidence": task.confidence,
+        "business_line": task.business_line,
     })
 
 
@@ -120,36 +122,39 @@ def make_tasks_blueprint(
         if err:
             return _error(err)
         assert task is not None
-        if source_repo.get(task.source_id) is None:
+        bl = current_business_line()
+        if source_repo.get(task.source_id, business_line=bl) is None:
             return _error("source_id does not exist")
+        task.business_line = bl
         return jsonify(_task_json(task_repo.create(task))), 201
 
     @bp.get("/tasks")
     def list_tasks():
-        return jsonify([_task_json(task) for task in task_repo.list()])
+        return jsonify([_task_json(t) for t in task_repo.list(business_line=current_business_line())])
 
     @bp.get("/tasks/<task_id>")
     def get_task(task_id: str):
-        task = task_repo.get(task_id)
+        task = task_repo.get(task_id, business_line=current_business_line())
         if task is None:
             return _error("task not found", 404)
         return jsonify(_task_json(task))
 
     @bp.post("/tasks/<task_id>/start")
     def start_task(task_id: str):
-        task = task_repo.get(task_id)
+        bl = current_business_line()
+        task = task_repo.get(task_id, business_line=bl)
         if task is None:
             return _error("task not found", 404)
-        source = source_repo.get(task.source_id)
+        source = source_repo.get(task.source_id, business_line=bl)
         if source is None:
             task.status = "error"
             task.error_message = "task source does not exist"
-            task_repo.update(task)
+            task_repo.update(task, business_line=bl)
             return _error("task source does not exist", 409)
         if not source.enabled:
             task.status = "error"
             task.error_message = "task source is disabled"
-            task_repo.update(task)
+            task_repo.update(task, business_line=bl)
             return _error("task source is disabled", 409)
         try:
             if config_publisher is not None:
@@ -157,27 +162,28 @@ def make_tasks_blueprint(
         except Exception as exc:
             task.status = "error"
             task.error_message = str(exc)
-            task_repo.update(task)
+            task_repo.update(task, business_line=bl)
             return _error("failed to publish runtime config", 500)
         task.status = "running"
         task.error_message = ""
-        task_repo.update(task)
+        task_repo.update(task, business_line=bl)
         return jsonify(_task_json(task))
 
     @bp.post("/tasks/<task_id>/stop")
     def stop_task(task_id: str):
-        task = task_repo.get(task_id)
+        bl = current_business_line()
+        task = task_repo.get(task_id, business_line=bl)
         if task is None:
             return _error("task not found", 404)
         task.status = "stopped"
-        task_repo.update(task)
+        task_repo.update(task, business_line=bl)
         if config_publisher is not None:
             config_publisher.publish_stopped(task)
         return jsonify(_task_json(task))
 
     @bp.get("/tasks/<task_id>/status")
     def task_status(task_id: str):
-        task = task_repo.get(task_id)
+        task = task_repo.get(task_id, business_line=current_business_line())
         if task is None:
             return _error("task not found", 404)
         return jsonify(

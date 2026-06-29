@@ -11,6 +11,11 @@ def _ts() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+# Default business_line for the phase1 (一期) deployment. Phase2 tenants set
+# this on the user row at provisioning time; see backend/docs/business_line.md.
+DEFAULT_BUSINESS_LINE = "phase1"
+
+
 @dataclass
 class Source:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -19,6 +24,7 @@ class Source:
     address: str = ""
     enabled: bool = True
     note: str = ""
+    business_line: str = DEFAULT_BUSINESS_LINE
     created_at: str = field(default_factory=_ts)
     updated_at: str = field(default_factory=_ts)
 
@@ -33,6 +39,7 @@ class Task:
     confidence: float = 0.5
     status: str = "created"
     error_message: str = ""
+    business_line: str = DEFAULT_BUSINESS_LINE
     created_at: str = field(default_factory=_ts)
     updated_at: str = field(default_factory=_ts)
 
@@ -52,5 +59,16 @@ class Alarm:
     vlm_confidence: float = 0.0
     screenshot_object: str = ""
     ts_ms: int = 0
+    business_line: str = DEFAULT_BUSINESS_LINE
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    created_at: str = field(default_factory=_ts)
+
+
+@dataclass
+class User:
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    username: str = ""
+    password_hash: str = ""
+    business_line: str = DEFAULT_BUSINESS_LINE
+    enabled: bool = True
     created_at: str = field(default_factory=_ts)

@@ -29,9 +29,10 @@ from app.api.alarms import make_alarms_blueprint
 from app.api.sources import make_sources_blueprint
 from app.api.tasks import RedisConfigPublisher, make_tasks_blueprint
 from app.api.web import make_web_blueprint
+from app.api.auth import AuthConfig, init_auth, make_auth_blueprint
 from app.api.repository import (
-    InMemoryAlarmRepo, InMemorySourceRepo, InMemoryTaskRepo,
-    MySQLAlarmRepo, MySQLSourceRepo, MySQLTaskRepo,
+    InMemoryAlarmRepo, InMemorySourceRepo, InMemoryTaskRepo, InMemoryUserRepo,
+    MySQLAlarmRepo, MySQLSourceRepo, MySQLTaskRepo, MySQLUserRepo,
 )
 
 # Frontend build output lives at app/static/frontend (Vite outDir); serve it at
@@ -67,7 +68,8 @@ def create_app() -> Flask:
     process_up.labels(worker="flask").set(1)
 
     redis_client = make_client(cfg)
-    if os.environ.get("API_REPO", "memory") == "mysql":
+    use_mysql = os.environ.get("API_REPO", "memory") == "mysql"
+    if use_mysql:
         conn_params = {
             "host": cfg.mysql.host,
             "port": cfg.mysql.port,
@@ -78,11 +80,25 @@ def create_app() -> Flask:
         source_repo = MySQLSourceRepo(conn_params)
         task_repo = MySQLTaskRepo(conn_params)
         alarm_repo = MySQLAlarmRepo(conn_params)
+        user_repo = MySQLUserRepo(conn_params)
     else:
         source_repo = InMemorySourceRepo()
         task_repo = InMemoryTaskRepo()
         alarm_repo = InMemoryAlarmRepo()
+        user_repo = InMemoryUserRepo()
+
+    # Auth: phase1 deployments default to permissive (require_auth=False,
+    # default business_line=phase1) so existing curl/worker flows keep working.
+    # Operators set AUTH_REQUIRE_AUTH=1 / AUTH_TRUST_BUSINESS_LINE_HEADER=1 to
+    # enforce token auth and accept the X-Business-Line header.
+    auth_cfg = AuthConfig(
+        require_auth=os.environ.get("AUTH_REQUIRE_AUTH", "0") == "1",
+        trust_business_line_header=os.environ.get("AUTH_TRUST_BUSINESS_LINE_HEADER", "0") == "1",
+    )
+    init_auth(app, user_repo, auth_cfg)
+
     config_publisher = RedisConfigPublisher(redis_client)
+    app.register_blueprint(make_auth_blueprint(user_repo), url_prefix="/api")
     app.register_blueprint(make_sources_blueprint(source_repo), url_prefix="/api")
     app.register_blueprint(
         make_tasks_blueprint(task_repo, source_repo, config_publisher=config_publisher),
